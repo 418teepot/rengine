@@ -38,7 +38,6 @@ struct GameState {
 
 impl GameState {
     // TODO: Recoverable error for malformed fen string
-    // TODO: Initialize with correct zobrist (side to move)
     fn new_from_fen(fen: &str) -> Self {
         let parts: Vec<&str> = fen.split_whitespace().collect();
         if parts.len() != 6 {
