@@ -3,8 +3,8 @@ use crate::r#move::Move;
 use crate::zobrist::ZobristHash;
 
 // TODO: Maybe smaller sizes?
-type Piece = usize;
-type Side = usize;
+pub type Piece = usize;
+pub type Side = usize;
 type Ply = usize;
 
 const NUM_OF_PIECES: usize = 6;
@@ -32,6 +32,7 @@ struct GameState {
     en_passant_board: Bitboard,
     castling_rights: [bool; 4],
     fifty_move_rule: Ply,
+    zobrist: ZobristHash,
     history: Vec<History>,
 }
 
@@ -110,24 +111,24 @@ impl GameState {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
 
-    // TODO: Also modify zobrist key
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
+        self.zobrist.add_piece(square, piece, side);
     }
 
-    // TODO: Also modify zobrist key
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
+        self.zobrist.remove_piece(square, piece, side);
     }
 
-    // TODO: Also modify zobrist key
     fn add_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = true;
+        self.zobrist.add_castling_right(right);
     }
 
-    // TODO: Also modify zobrist key
     fn remove_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = false;
+        self.zobrist.remove_castling_right(right);
     }
 }
 
