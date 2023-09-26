@@ -87,11 +87,13 @@ impl GameState {
         }
 
         state.plys = ply_clock.parse().expect("Ply clock is not a number in fen string.");
+        state.zobrist.init_side_to_move(state.side_to_move());
         state.fifty_move_rule = fifty_move_clock.parse().expect("50 move rule clock is not a valid number in fen string.");
         state.en_passant_board = match en_passant_square {
             "-" => Bitboard::empty(),
             _ => Bitboard::square(en_passant_square.parse().expect("Not a valid en_passant square in fen string")),
         };
+        state.zobrist.init_en_passant_square(state.en_passant_board);
 
         for character in castling_rights.chars() {
             match character {
@@ -111,24 +113,33 @@ impl GameState {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
 
+    #[inline(always)]
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
         self.zobrist.add_piece(square, piece, side);
     }
 
+    #[inline(always)]
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
     }
 
+    #[inline(always)]
     fn add_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = true;
         self.zobrist.add_castling_right(right);
     }
-
+    
+    #[inline(always)]
     fn remove_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = false;
         self.zobrist.remove_castling_right(right);
+    }
+
+    #[inline(always)]
+    fn side_to_move(&self) -> Side {
+        self.plys & 1
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::gamestate::{Piece, Side};
-use crate::bitboard::Square;
+use crate::bitboard::{Square, Bitboard};
 
 #[derive(Default)]
 pub struct ZobristHash(i64);
@@ -34,6 +34,10 @@ impl ZobristHash {
     }
 
     pub fn remove_en_passant_square(&mut self, square: Square) {
+        todo!()
+    }
+
+    pub fn init_en_passant_square(&mut self, board: Bitboard) {
         todo!()
     }
 }

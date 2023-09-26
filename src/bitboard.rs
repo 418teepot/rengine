@@ -1,6 +1,6 @@
 use std::ops::{BitOrAssign, BitOr, BitXorAssign};
 
-#[derive(PartialEq, Default)]
+#[derive(PartialEq, Default, Copy, Clone)]
 pub struct Bitboard(i64);
 
 pub type Square = usize;
