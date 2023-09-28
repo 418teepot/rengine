@@ -5,6 +5,8 @@ pub struct Bitboard(i64);
 
 pub type Square = usize;
 
+pub const NUM_OF_SQUARES: usize = 64;
+
 impl Bitboard {
     pub fn from_squares(squares: &[Square]) -> Self {
         let mut bitboard = Bitboard(0);
@@ -32,6 +34,16 @@ impl Bitboard {
     #[inline(always)]
     pub fn remove_piece(&mut self, square: Square) {
         self.0 &= !(1 << square);
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    #[inline(always)]
+    pub fn next_piece_index(&self) -> Square {
+        self.0.trailing_zeros() as Square
     }
 }
 
@@ -69,7 +81,7 @@ impl Iterator for BitboardIterator {
         if self.bitset == Bitboard(0) {
             return None;
         }
-        let index = self.bitset.0.trailing_zeros() as usize;
+        let index = self.bitset.next_piece_index();
         self.bitset ^= Bitboard(1 << index);
         Some(index)
     }

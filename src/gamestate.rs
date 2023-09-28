@@ -7,8 +7,8 @@ pub type Piece = usize;
 pub type Side = usize;
 type Ply = usize;
 
-const NUM_OF_PIECES: usize = 6;
-const NUM_OF_PLAYERS: usize = 2;
+pub const NUM_OF_PIECES: usize = 6;
+pub const NUM_OF_PLAYERS: usize = 2;
 
 const PAWN: Piece = 0;
 const ROOK: Piece = 1;
@@ -17,8 +17,8 @@ const BISHOP: Piece = 3;
 const QUEEN: Piece = 4;
 const KING: Piece = 5;
 
-const WHITE: Side = 0;
-const BLACK: Side = 1;
+pub const WHITE: Side = 0;
+pub const BLACK: Side = 1;
 
 const WHITE_KINGSIDE_CASTLE: usize = 1;
 const WHITE_QUEENSIDE_CASTLE: usize = 0;
