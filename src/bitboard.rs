@@ -16,7 +16,6 @@ impl Bitboard {
         bitboard
     }
 
-    #[inline(always)]
     pub fn square(square: Square) -> Self {
         Bitboard(1 << square)
     }
@@ -25,23 +24,19 @@ impl Bitboard {
         Bitboard(0)
     }
 
-    #[inline(always)]
     pub fn add_piece(&mut self, square: Square) {
         self.0 |= 1 << square;
     } 
 
     // TODO: Secure xor wihtout having to check if square is actually set?
-    #[inline(always)]
     pub fn remove_piece(&mut self, square: Square) {
         self.0 &= !(1 << square);
     }
 
-    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.0 == 0
     }
 
-    #[inline(always)]
     pub fn next_piece_index(&self) -> Square {
         self.0.trailing_zeros() as Square
     }
@@ -50,21 +45,18 @@ impl Bitboard {
 impl BitOr for Bitboard {
     type Output = Bitboard;
 
-    #[inline(always)]
     fn bitor(self, rhs: Self) -> Self::Output {
         Self(self.0 | rhs.0)
     }
 }
 
 impl BitOrAssign for Bitboard {
-    #[inline(always)]
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 = self.0 | rhs.0;
     }
 }
 
 impl BitXorAssign for Bitboard {
-    #[inline(always)]
     fn bitxor_assign(&mut self, rhs: Self) {
         self.0 = self.0 ^ rhs.0;
     }

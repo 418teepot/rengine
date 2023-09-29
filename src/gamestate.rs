@@ -1,5 +1,5 @@
 use crate::bitboard::{Bitboard, Square};
-use crate::r#move::Move;
+use crate::r#move::{Move, CastlingSide};
 use crate::zobrist::ZobristHash;
 
 // TODO: Maybe smaller sizes?
@@ -10,7 +10,7 @@ type Ply = usize;
 pub const NUM_OF_PIECES: usize = 6;
 pub const NUM_OF_PLAYERS: usize = 2;
 
-const PAWN: Piece = 0;
+pub const PAWN: Piece = 0;
 const ROOK: Piece = 1;
 const KNIGHT: Piece = 2;
 const BISHOP: Piece = 3;
@@ -24,6 +24,11 @@ const WHITE_KINGSIDE_CASTLE: usize = 1;
 const WHITE_QUEENSIDE_CASTLE: usize = 0;
 const BLACK_QUEENSIDE_CASTLE: usize = 2;
 const BLACK_KINGSIDE_CASTLE: usize = 3;
+
+const A8: Square = 56;
+const H8: Square = 63;
+const A1: Square = 0;
+const H1: Square = 7;
 
 #[derive(Default)]
 struct GameState {
@@ -112,31 +117,99 @@ impl GameState {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
 
-    #[inline(always)]
+    fn apply_move(&mut self, r#move: Move) {
+        let from = r#move.from();
+        let to = r#move.to();
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+        let moving_piece = r#move.moving_piece();
+
+        self.en_passant_board = Bitboard::empty();
+        self.fifty_move_rule += 1;
+
+        if r#move.is_capture() {
+            self.fifty_move_rule = 0;
+
+            if r#move.is_capture_and_en_passant() {
+                self.remove_en_passant_pawn(to, our_side);
+            }
+            else {
+                let captured = r#move.captured_piece();
+                self.remove_piece(to, captured, enemy_side);
+                if captured == ROOK {
+                    self.handle_rook_capture(to, our_side);
+                }
+            }
+        }
+        
+        if r#move.is_promotion() {
+            self.fifty_move_rule = 0;
+            let promoted = r#move.promoted_piece();
+            self.add_piece(to, promoted, our_side);
+            self.remove_piece(from, moving_piece, our_side);
+            return
+        }
+        
+        if let Some(castle_side) = r#move.is_castle_and_where() {
+            self.do_castle(castle_side, our_side)
+        }
+        
+    }
+
+    fn do_castle(&mut self, casling_side: CastlingSide, our_side: Side) {
+        todo!()
+    }
+
+    fn remove_en_passant_pawn(&mut self, to: Square, our_side: Side) {
+        if our_side == WHITE {
+            self.remove_piece(to - 8, PAWN, our_side ^ 1);
+        }
+        else {
+            self.remove_piece(to + 8, PAWN, our_side ^ 1);
+        }
+    }
+
+    fn handle_rook_capture(&mut self, to: Square, our_side: Side) {
+        if our_side == WHITE {
+            if to == A8 {
+                self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
+            }
+            else if to == H8 {
+                self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
+            }
+        }
+        else {
+            if to == A1 {
+                self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
+            }
+            else if to == H1 {
+                self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
+            }
+        }
+    }
+
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
         self.zobrist.add_piece(square, piece, side);
     }
 
-    #[inline(always)]
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
     }
 
-    #[inline(always)]
     fn add_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = true;
         self.zobrist.add_castling_right(right);
     }
     
-    #[inline(always)]
     fn remove_castling_right(&mut self, right: usize) {
-        self.castling_rights[right] = false;
-        self.zobrist.remove_castling_right(right);
+        if self.castling_rights[right] == true {
+            self.castling_rights[right] = false;
+            self.zobrist.remove_castling_right(right);
+        }
     }
 
-    #[inline(always)]
     fn side_to_move(&self) -> Side {
         self.plys & 1
     }
