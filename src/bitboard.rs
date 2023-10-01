@@ -1,7 +1,7 @@
-use std::ops::{BitOrAssign, BitOr, BitXorAssign};
+use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd};
 
-#[derive(PartialEq, Default, Copy, Clone)]
-pub struct Bitboard(i64);
+#[derive(PartialEq, Default, Copy, Clone, Debug)]
+pub struct Bitboard(pub u64);
 
 pub type Square = usize;
 
@@ -88,5 +88,13 @@ impl IntoIterator for Bitboard {
         BitboardIterator {
             bitset: self,
         }
+    }
+}
+
+impl BitAnd for Bitboard {
+    type Output = Bitboard;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Bitboard(self.0 & rhs.0)
     }
 }

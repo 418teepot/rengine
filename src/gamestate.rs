@@ -11,9 +11,9 @@ pub const NUM_OF_PIECES: usize = 6;
 pub const NUM_OF_PLAYERS: usize = 2;
 
 pub const PAWN: Piece = 0;
-const ROOK: Piece = 1;
+pub const ROOK: Piece = 1;
 const KNIGHT: Piece = 2;
-const BISHOP: Piece = 3;
+pub const BISHOP: Piece = 3;
 const QUEEN: Piece = 4;
 const KING: Piece = 5;
 
