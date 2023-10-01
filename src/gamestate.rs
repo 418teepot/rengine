@@ -27,8 +27,19 @@ const BLACK_KINGSIDE_CASTLE: usize = 3;
 
 const A8: Square = 56;
 const H8: Square = 63;
+const D8: Square = 59;
+const C8: Square = 58;
+const G8: Square = 62;
+const F8: Square = 61;
 const A1: Square = 0;
 const H1: Square = 7;
+const F1: Square = 5;
+const D1: Square = 3;
+const E1: Square = 4;
+const G1: Square = 6;
+const C1: Square = 2;
+const E8: Square = 60;
+
 
 #[derive(Default)]
 struct GameState {
@@ -151,13 +162,164 @@ impl GameState {
         }
         
         if let Some(castle_side) = r#move.is_castle_and_where() {
-            self.do_castle(castle_side, our_side)
+            self.do_castle(castle_side, our_side);
+            return
         }
+
+        if r#move.is_double_pawn_push() {
+            self.handle_double_pawn_push(to, our_side);
+        }
+
+        self.handle_castling_right_removing_moves(from, moving_piece, our_side);
+
+        self.move_piece(from, to, moving_piece, our_side);
         
     }
 
+    fn handle_castling_right_removing_moves(&mut self, from: Square, moving_piece: Piece, our_side: Side) {
+        if moving_piece == PAWN {
+            self.fifty_move_rule = 0;
+        }
+        else if moving_piece == KING {
+            self.handle_king_move(from, our_side);
+        }
+        else if moving_piece == ROOK {
+            self.handle_rook_move(from, our_side);
+        }
+    }
+
+    fn handle_king_move(&mut self, from: Square, our_side: Side) {
+        if our_side == WHITE {
+            self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
+            self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
+        }
+        else {
+            self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
+            self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
+        }
+    }
+
+    fn handle_rook_move(&mut self, from: Square, our_side: Side) {
+        if our_side == WHITE {
+            if from == A1 {
+                self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
+            }
+            else if from == H1 {
+                self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
+            }
+        }
+        else {
+            if from == A8 {
+                self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
+            }
+            else if from == H8 {
+                self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
+            }
+        }
+    }
+
+    fn undo_move(&mut self) {
+        let past = self.history.pop().expect("Tried to undo move that does not exist.");
+        self.plys -= 1;
+
+        let r#move = past.r#move;
+        let to = r#move.to();
+        let from = r#move.from();
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+        let moving_piece = r#move.moving_piece();
+        
+        if r#move.is_capture() {
+            if r#move.is_capture_and_en_passant() {
+                self.re_add_en_passant_pawn(to, our_side);
+            }
+            else {
+                self.add_piece(to, r#move.captured_piece(), enemy_side);
+            }
+        }
+
+        if r#move.is_promotion() {
+            let promoted = r#move.promoted_piece();
+            self.add_piece(from, moving_piece, our_side);
+            self.remove_piece(to, promoted, our_side);
+            return;
+        }
+
+        if let Some(castle_side) = r#move.is_castle_and_where() {
+            self.undo_castle(castle_side, our_side);
+        }
+
+        self.move_piece(to, from, moving_piece, our_side);
+
+        self.castling_rights = past.castling_rights;
+        self.fifty_move_rule = past.fifty_move_rule;
+        self.zobrist = past.zobrist;
+    }
+
+    fn handle_double_pawn_push(&mut self, to: Square, our_side: Side) {
+        if our_side == WHITE {
+            self.en_passant_board = Bitboard::square(to - 8);
+        }
+        else {
+            self.en_passant_board = Bitboard::square(to + 8);
+        }
+    }
+
     fn do_castle(&mut self, casling_side: CastlingSide, our_side: Side) {
-        todo!()
+        if our_side == WHITE {
+            match casling_side {
+                CastlingSide::QueenSide => {
+                    self.move_piece(A1, D1, ROOK, our_side);
+                    self.move_piece(E1, C1, KING, our_side);
+                },
+                CastlingSide::KingSide => {
+                    self.move_piece(H1, F1, ROOK, our_side);
+                    self.move_piece(E1, G1, KING, our_side);
+                },
+            }
+            self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
+            self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
+            return
+        }
+        match casling_side {
+            CastlingSide::QueenSide => {
+                self.move_piece(A8, D8, ROOK, our_side);
+                self.move_piece(E8, C8, KING, our_side);
+            },
+            CastlingSide::KingSide => {
+                self.move_piece(H8, F8, ROOK, our_side);
+                self.move_piece(E8, G8, KING, our_side);
+            },
+        }
+        self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
+        self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
+
+    }
+    
+    fn undo_castle(&mut self, castling_side: CastlingSide, our_side: Side) {
+        if our_side == WHITE {
+            match castling_side {
+                CastlingSide::QueenSide => {
+                    self.move_piece(D8, A8, ROOK, our_side);
+                    self.move_piece(C8, E8, KING, our_side);
+                },
+                CastlingSide::KingSide => {
+                    self.move_piece(F8, H8, ROOK, our_side);
+                    self.move_piece(G8, E8, KING, our_side);
+                }
+            }
+            return;
+        }
+        match castling_side {
+            CastlingSide::QueenSide => {
+                self.move_piece(D8, A8, ROOK, our_side);
+                self.move_piece(C8, E8, KING, our_side);
+            },
+            CastlingSide::KingSide => {
+                self.move_piece(F8, H8, ROOK, our_side);
+                self.move_piece(G8, E8, KING, our_side);
+            }
+        }
     }
 
     fn remove_en_passant_pawn(&mut self, to: Square, our_side: Side) {
@@ -168,6 +330,16 @@ impl GameState {
             self.remove_piece(to + 8, PAWN, our_side ^ 1);
         }
     }
+    
+    fn re_add_en_passant_pawn(&mut self, to: Square, our_side: Side) {
+        if our_side == WHITE {
+            self.add_piece(to - 8, PAWN, our_side ^ 1);
+        }
+        else {
+            self.add_piece(to + 8, PAWN, our_side ^ 1);
+        }
+    }
+
 
     fn handle_rook_capture(&mut self, to: Square, our_side: Side) {
         if our_side == WHITE {
@@ -196,6 +368,11 @@ impl GameState {
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
+    }
+
+    fn move_piece(&mut self, from: Square, to: Square, piece: Piece, side: Side) {
+        self.remove_piece(from, piece, side);
+        self.add_piece(to, piece, side);
     }
 
     fn add_castling_right(&mut self, right: usize) {

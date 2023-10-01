@@ -40,6 +40,7 @@ const MASK_SQUARE: u32 = 0b111111;
 const PROMOTED_PIECE_MASK: u32 = 0b11;
 const MASK_PIECE: u32 = 0b111;
 const CASTLE_MASK: u32 = 0b11;
+const SPECIAL_MASK: u32 = 0b1111;
 
 const SINGLE_FLAG: u32 = 0b1;
 
@@ -128,6 +129,10 @@ impl Move {
         else {
             Some(CastlingSide::KingSide)
         }
+    }
+
+    pub fn is_double_pawn_push(&self) -> bool {
+        ((self.0 >> MOVE_SPECIAL_OFFSET) & SPECIAL_MASK) == 0b1
     }
 }
 
