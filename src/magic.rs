@@ -2,7 +2,7 @@ use crate::bitboard::{Bitboard, Square};
 use crate::gamestate::{Piece, ROOK, BISHOP};
 use rand::{thread_rng, Rng};
 
-static mailbox: [i8; 120] = [
+pub static mailbox: [i8; 120] = [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1,  0,  1,  2,  3,  4,  5,  6,  7, -1,
@@ -17,7 +17,7 @@ static mailbox: [i8; 120] = [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 ];
 
-static mailbox64: [i8; 64] = [
+pub static mailbox64: [i8; 64] = [
     21, 22, 23, 24, 25, 26, 27, 28,
     31, 32, 33, 34, 35, 36, 37, 38,
     41, 42, 43, 44, 45, 46, 47, 48,
@@ -35,7 +35,7 @@ pub struct MagicEntry {
     index_bits: u8,
 }
 
-fn magic_index(entry: MagicEntry, blockers: Bitboard) -> usize {
+pub fn magic_index(entry: MagicEntry, blockers: Bitboard) -> usize {
     let relevant_blockers = blockers & entry.mask;
     let hash = relevant_blockers.0.wrapping_mul(entry.magic);
     let magic_index = (hash >> (64 - entry.index_bits)) as usize;

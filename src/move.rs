@@ -54,11 +54,11 @@ pub enum CastlingSide {
 }
 
 impl Move {
-    fn new_from_to(from: Square, to: Square, moving: Piece) -> Self {
+    pub fn new_from_to(from: Square, to: Square, moving: Piece) -> Self {
         Move((from as u32) | (to as u32) << MOVE_TO_OFFSET | (moving as u32) << MOVE_MOVING_OFFSET)
     }
 
-    fn new_capture(from: Square, to: Square, moving: Piece, captured: Piece) -> Self {
+    pub fn new_capture(from: Square, to: Square, moving: Piece, captured: Piece) -> Self {
         Self::new_from_to(from, to, moving) | (captured as u32) << MOVE_CAPTURED_OFFSET | 1 << MOVE_IS_CAPTURE_OFFSET
     }
 
@@ -136,27 +136,27 @@ impl Move {
     }
 }
 
-struct MoveList {
+pub struct MoveList {
     moves: [Move; MAX_MOVES],
     length: u8,
 }
 
 impl MoveList {
-    fn new() -> MoveList {
+    pub fn new() -> MoveList {
         MoveList {
             moves: [NULLMOVE; MAX_MOVES],
             length: 0,
         }
     }
 
-    fn add_move(&mut self, r#move: Move) {
+    pub fn add_move(&mut self, r#move: Move) {
         assert!(self.length as usize <= MAX_MOVES);
         self.moves[self.length as usize] = r#move;
         self.length += 1;
     }
 }
 
-struct MoveIterator {
+pub struct MoveIterator {
     move_list: MoveList,
     index: u8,
 }

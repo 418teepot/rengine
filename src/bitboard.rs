@@ -1,4 +1,4 @@
-use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd};
+use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd, Not, Shl, Shr};
 
 #[derive(PartialEq, Default, Copy, Clone, Debug)]
 pub struct Bitboard(pub u64);
@@ -35,6 +35,10 @@ impl Bitboard {
 
     pub fn is_empty(&self) -> bool {
         self.0 == 0
+    }
+
+    pub fn is_filled(&self) -> bool {
+        self.0 != 0
     }
 
     pub fn next_piece_index(&self) -> Square {
@@ -96,5 +100,29 @@ impl BitAnd for Bitboard {
 
     fn bitand(self, rhs: Self) -> Self::Output {
         Bitboard(self.0 & rhs.0)
+    }
+}
+
+impl Not for Bitboard {
+    type Output = Bitboard;
+
+    fn not(self) -> Self::Output {
+        Bitboard(!self.0)
+    }
+}
+
+impl Shl<usize> for Bitboard {
+    type Output = Bitboard;
+
+    fn shl(self, rhs: usize) -> Self::Output {
+        Bitboard(self.0 << rhs)
+    }
+}
+
+impl Shr<usize> for Bitboard {
+    type Output = Bitboard;
+
+    fn shr(self, rhs: usize) -> Self::Output {
+        Bitboard(self.0 >> rhs)
     }
 }

@@ -12,10 +12,10 @@ pub const NUM_OF_PLAYERS: usize = 2;
 
 pub const PAWN: Piece = 0;
 pub const ROOK: Piece = 1;
-const KNIGHT: Piece = 2;
+pub const KNIGHT: Piece = 2;
 pub const BISHOP: Piece = 3;
-const QUEEN: Piece = 4;
-const KING: Piece = 5;
+pub const QUEEN: Piece = 4;
+pub const KING: Piece = 5;
 
 pub const WHITE: Side = 0;
 pub const BLACK: Side = 1;
@@ -42,8 +42,8 @@ const E8: Square = 60;
 
 
 #[derive(Default)]
-struct GameState {
-    piece_boards: [[Bitboard; NUM_OF_PIECES]; NUM_OF_PLAYERS],
+pub struct GameState {
+    pub piece_boards: [[Bitboard; NUM_OF_PIECES]; NUM_OF_PLAYERS],
     plys: Ply,
     en_passant_board: Bitboard,
     castling_rights: [bool; 4],
@@ -387,7 +387,7 @@ impl GameState {
         }
     }
 
-    fn side_to_move(&self) -> Side {
+    pub fn side_to_move(&self) -> Side {
         self.plys & 1
     }
 }

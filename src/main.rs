@@ -9,6 +9,7 @@ mod r#move;
 mod gamestate;
 mod zobrist;
 mod magic;
+mod movegen;
 
 fn main() {
     exit(0)
