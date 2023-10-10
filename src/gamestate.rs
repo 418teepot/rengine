@@ -20,10 +20,10 @@ pub const KING: Piece = 5;
 pub const WHITE: Side = 0;
 pub const BLACK: Side = 1;
 
-const WHITE_KINGSIDE_CASTLE: usize = 1;
-const WHITE_QUEENSIDE_CASTLE: usize = 0;
-const BLACK_QUEENSIDE_CASTLE: usize = 2;
-const BLACK_KINGSIDE_CASTLE: usize = 3;
+pub const WHITE_KINGSIDE_CASTLE: usize = 1;
+pub const WHITE_QUEENSIDE_CASTLE: usize = 0;
+pub const BLACK_QUEENSIDE_CASTLE: usize = 2;
+pub const BLACK_KINGSIDE_CASTLE: usize = 3;
 
 const A8: Square = 56;
 const H8: Square = 63;
@@ -41,12 +41,12 @@ const C1: Square = 2;
 const E8: Square = 60;
 
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct GameState {
     pub piece_boards: [[Bitboard; NUM_OF_PIECES]; NUM_OF_PLAYERS],
     plys: Ply,
-    en_passant_board: Bitboard,
-    castling_rights: [bool; 4],
+    pub en_passant_board: Bitboard,
+    pub castling_rights: [bool; 4],
     fifty_move_rule: Ply,
     zobrist: ZobristHash,
     history: Vec<History>,
@@ -54,7 +54,7 @@ pub struct GameState {
 
 impl GameState {
     // TODO: Recoverable error for malformed fen string
-    fn new_from_fen(fen: &str) -> Self {
+    pub fn new_from_fen(fen: &str) -> Self {
         let parts: Vec<&str> = fen.split_whitespace().collect();
         if parts.len() != 6 {
             panic!("Invalid number of parts in fen string.");
@@ -67,10 +67,10 @@ impl GameState {
         let castling_rights = parts[2];
         let en_passant_square = parts[3];
         let fifty_move_clock = parts[4];
-        let ply_clock = parts[5];
+        let _ply_clock = parts[5];
 
         let mut file = 0;
-        let mut rank = 0;
+        let mut rank = 7;
 
         for character in piece_structure.chars() {
             let square = rank_file_to_square(file, rank);
@@ -101,7 +101,12 @@ impl GameState {
             file += 1;
         }
 
-        state.plys = ply_clock.parse().expect("Ply clock is not a number in fen string.");
+        // state.plys = ply_clock.parse().expect("Ply clock is not a number in fen string.");
+        state.plys = if _side_to_move == "w" {
+            0
+        } else {
+            1
+        };
         state.zobrist.init_side_to_move(state.side_to_move());
         state.fifty_move_rule = fifty_move_clock.parse().expect("50 move rule clock is not a valid number in fen string.");
         state.en_passant_board = match en_passant_square {
@@ -124,11 +129,12 @@ impl GameState {
         state
     }
 
-    fn new_starting_pos() -> Self {
+    pub fn new_starting_pos() -> Self {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
 
-    fn apply_move(&mut self, r#move: Move) {
+    pub fn apply_move(&mut self, r#move: Move) {
+        self.history.push(History { r#move, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();
         let our_side = self.side_to_move();
@@ -137,6 +143,7 @@ impl GameState {
 
         self.en_passant_board = Bitboard::empty();
         self.fifty_move_rule += 1;
+        self.plys += 1;
 
         if r#move.is_capture() {
             self.fifty_move_rule = 0;
@@ -181,14 +188,14 @@ impl GameState {
             self.fifty_move_rule = 0;
         }
         else if moving_piece == KING {
-            self.handle_king_move(from, our_side);
+            self.handle_king_move(our_side);
         }
         else if moving_piece == ROOK {
             self.handle_rook_move(from, our_side);
         }
     }
 
-    fn handle_king_move(&mut self, from: Square, our_side: Side) {
+    fn handle_king_move(&mut self, our_side: Side) {
         if our_side == WHITE {
             self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
             self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
@@ -218,7 +225,7 @@ impl GameState {
         }
     }
 
-    fn undo_move(&mut self) {
+    pub fn undo_move(&mut self) {
         let past = self.history.pop().expect("Tried to undo move that does not exist.");
         self.plys -= 1;
 
@@ -360,28 +367,35 @@ impl GameState {
         }
     }
 
+    #[inline(always)]
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
+        if square >= 64 {
+            println!("Hi");
+        }
         self.zobrist.add_piece(square, piece, side);
     }
 
+    #[inline(always)]
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
     }
 
+    #[inline(always)]
     fn move_piece(&mut self, from: Square, to: Square, piece: Piece, side: Side) {
         self.remove_piece(from, piece, side);
         self.add_piece(to, piece, side);
     }
 
+    #[inline(always)]
     fn add_castling_right(&mut self, right: usize) {
         self.castling_rights[right] = true;
         self.zobrist.add_castling_right(right);
     }
     
     fn remove_castling_right(&mut self, right: usize) {
-        if self.castling_rights[right] == true {
+        if self.castling_rights[right] {
             self.castling_rights[right] = false;
             self.zobrist.remove_castling_right(right);
         }
@@ -392,11 +406,12 @@ impl GameState {
     }
 }
 
+#[inline(always)]
 fn rank_file_to_square(file: Square, rank: Square) -> Square {
     rank * 8 + file
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 struct History {
     r#move: Move,
     fifty_move_rule: Ply,

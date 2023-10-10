@@ -35,11 +35,11 @@ pub struct MagicEntry {
     index_bits: u8,
 }
 
+#[inline(always)]
 pub fn magic_index(entry: MagicEntry, blockers: Bitboard) -> usize {
     let relevant_blockers = blockers & entry.mask;
     let hash = relevant_blockers.0.wrapping_mul(entry.magic);
-    let magic_index = (hash >> (64 - entry.index_bits)) as usize;
-    return magic_index;
+    (hash >> (64 - entry.index_bits)) as usize
 }
 
 fn find_magic_entry(piece: Piece, square: Square) -> (MagicEntry, Vec<Bitboard>) {
@@ -47,7 +47,6 @@ fn find_magic_entry(piece: Piece, square: Square) -> (MagicEntry, Vec<Bitboard>)
     let mut rng = rand::thread_rng();
     loop {
         let magic_candidate = rng.gen::<u64>() & rng.gen::<u64>();
-        println!("Trying magic {:#x} for square {}...", magic_candidate, square);
         let magic_entry_candidate = MagicEntry { mask: relevant_mask, magic: magic_candidate, index_bits: (relevant_mask.0.count_ones() + 3) as u8 };
         if let Some(table) = try_make_table(piece, square, magic_entry_candidate) {
             return (magic_entry_candidate, table);
@@ -85,11 +84,11 @@ pub fn relevant_slider_blockers(square: Square, piece: Piece) -> Bitboard {
             }
         }
     }
-    return Bitboard(blockers);
+    Bitboard(blockers)
 }
 
 pub fn slider_plays_for_blockers(square: Square, piece: Piece, blockers: Bitboard) -> Bitboard {
-    let mut plays = 0;
+    let mut plays = Bitboard(0);
     let rays = get_rays_for_piece(piece);
     for ray in rays {
         let mut i = 1;
@@ -98,7 +97,7 @@ pub fn slider_plays_for_blockers(square: Square, piece: Piece, blockers: Bitboar
                 break;
             }
 
-            plays |= 1 << mailbox[(mailbox64[square] + ray * i) as usize];
+            plays |= Bitboard::square(mailbox[(mailbox64[square] + ray * i) as usize] as Square);
 
             if Bitboard::square(mailbox[(mailbox64[square] + ray * i) as usize] as usize) & blockers != Bitboard(0) {
                 break;
@@ -107,7 +106,7 @@ pub fn slider_plays_for_blockers(square: Square, piece: Piece, blockers: Bitboar
             i += 1;
         }
     }
-    return Bitboard(plays);
+    plays
 }
 
 static ROOK_RAYS: [i8; 4] = [1, -1, 10, -10];
@@ -125,7 +124,7 @@ pub struct BitSubset {
 impl BitSubset {
     pub fn new(set: Bitboard) -> BitSubset {
         BitSubset {
-            set: set,
+            set,
             subset: Bitboard(0),
         }
     }
@@ -157,7 +156,7 @@ lazy_static! {
             magics_and_plays.push(find_magic_entry(ROOK, square));
         }
 
-        return magics_and_plays;
+        magics_and_plays
     };
 
     pub static ref BISHOP_MAGICS_AND_PLAYS: Vec<(MagicEntry, Vec<Bitboard>)> = {
@@ -165,6 +164,6 @@ lazy_static! {
         for square in 0..64 {
             magics_and_plays.push(find_magic_entry(BISHOP, square));
         }
-        return magics_and_plays;
+        magics_and_plays
     };
 }

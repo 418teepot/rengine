@@ -4,45 +4,54 @@ use crate::gamestate::{Piece, Side, NUM_OF_PIECES, NUM_OF_PLAYERS, BLACK};
 use crate::bitboard::{Square, Bitboard, NUM_OF_SQUARES};
 use rand::Rng;
 
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, PartialEq)]
 pub struct ZobristHash(i64);
 
 // TODO: inline
 impl ZobristHash {
+    #[inline(always)]
     pub fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.0 ^= ZOBRIST_PIECES[side][piece][square].0;
     }
 
+    #[inline(always)]
     pub fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.add_piece(square, piece, side);
     }
 
+    #[inline(always)]
     pub fn add_castling_right(&mut self, right: usize) {
         self.0 ^= ZOBRIST_CASTLING_RIGHTS[right].0;
     }
 
+    #[inline(always)]
     pub fn remove_castling_right(&mut self, right: usize) {
         self.add_castling_right(right);
     }
 
+    #[inline(always)]
     pub fn flip_side_to_move(&mut self) {
         self.0 ^= ZOBRIST_BLACK_TO_MOVE.0;
     }
 
+    #[inline(always)]
     pub fn init_side_to_move(&mut self, side: Side) {
         if side == BLACK {
             self.0 ^= ZOBRIST_BLACK_TO_MOVE.0;
         }
     }
 
+    #[inline(always)]
     pub fn add_en_passant_square(&mut self, square: Square) {
         self.0 ^= ZOBRIST_EN_PASSANT_SQUARE[square].0;
     }
 
+    #[inline(always)]
     pub fn remove_en_passant_square(&mut self, square: Square) {
-        self.remove_en_passant_square(square);
+        self.add_en_passant_square(square);
     }
 
+    #[inline(always)]
     pub fn init_en_passant_square(&mut self, board: Bitboard) {
         if !board.is_empty() {
             self.add_en_passant_square(board.next_piece_index());

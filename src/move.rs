@@ -1,5 +1,3 @@
-use rand::SeedableRng;
-
 use crate::bitboard::Square;
 use crate::gamestate::{Piece, PAWN};
 use std::ops::BitOr;
@@ -22,7 +20,7 @@ const NULLMOVE: Move = Move(0);
 /// * ccc (20-22): The piece that was captured if there was a capture
 /// 
 /// https://www.chessprogramming.org/Encoding_Moves#From-To_Based
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub struct Move(pub u32);
 
 const MOVE_TO_OFFSET: usize = 6;
@@ -48,91 +46,120 @@ const SINGLE_FLAG: u32 = 0b1;
 const QUEENSIDE_CASTLE: u32 = 0b11 << MOVE_SPECIAL_OFFSET;
 const KINGSIDE_CASTLE: u32 = 0b10 << MOVE_SPECIAL_OFFSET;
 
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum CastlingSide {
     QueenSide,
     KingSide,
 }
 
 impl Move {
+    #[inline(always)]
     pub fn new_from_to(from: Square, to: Square, moving: Piece) -> Self {
         Move((from as u32) | (to as u32) << MOVE_TO_OFFSET | (moving as u32) << MOVE_MOVING_OFFSET)
     }
 
+    #[inline(always)]
     pub fn new_capture(from: Square, to: Square, moving: Piece, captured: Piece) -> Self {
         Self::new_from_to(from, to, moving) | (captured as u32) << MOVE_CAPTURED_OFFSET | 1 << MOVE_IS_CAPTURE_OFFSET
     }
 
-    fn new_en_passant_capture(from: Square, to: Square) -> Self {
+    #[inline(always)]
+    pub fn new_en_passant_capture(from: Square, to: Square) -> Self {
         Self::new_from_to(from, to, PAWN) | FLAG_EN_PASSANT_CAPTURE << MOVE_SPECIAL_OFFSET | (PAWN as u32) << MOVE_MOVING_OFFSET
     }
 
-    fn new_double_pawn_push(from: Square, to: Square) -> Self {
+    #[inline(always)]
+    pub fn new_double_pawn_push(from: Square, to: Square) -> Self {
         Self::new_from_to(from, to, PAWN) | FLAG_DOUBLE_PAWN_PUSH << MOVE_SPECIAL_OFFSET
     }
 
+    #[inline(always)]
     // TODO: Expand into 2 functions
-    fn new_castle(side: CastlingSide) -> Self {
+    pub fn new_castle(side: CastlingSide) -> Self {
         match side {
             CastlingSide::QueenSide => Move(QUEENSIDE_CASTLE),
             CastlingSide::KingSide => Move(KINGSIDE_CASTLE),
         }
     }
 
-    fn new_quiet_promotion(from: Square, to: Square, piece: Piece) -> Self {
+    #[inline(always)]
+    pub fn new_quiet_promotion(from: Square, to: Square, piece: Piece) -> Self {
         Self::new_from_to(from, to, PAWN) | FLAG_QUIET_PROMOTION << MOVE_SPECIAL_OFFSET | (piece as u32 - 1) << MOVE_SPECIAL_OFFSET
     }
 
-    fn new_capture_promotion(from: Square, to: Square, piece: Piece, captured: Piece) -> Self {
-        Self::new_quiet_promotion(from, to, piece) | (captured as u32) << MOVE_CAPTURED_OFFSET
+    #[inline(always)]
+    pub fn new_capture_promotion(from: Square, to: Square, piece: Piece, captured: Piece) -> Self {
+        Self::new_quiet_promotion(from, to, piece) | (captured as u32) << MOVE_CAPTURED_OFFSET | 1 << MOVE_IS_CAPTURE_OFFSET
     }
 
+    #[inline(always)]
     pub fn is_capture(&self) -> bool {
         SINGLE_FLAG & (self.0 >> MOVE_IS_CAPTURE_OFFSET) == 1
     }
 
+    #[inline(always)]
     pub fn captured_piece(&self) -> Piece {
         (self.0 >> MOVE_CAPTURED_OFFSET) as Piece
     }
 
+    #[inline(always)]
     pub fn from(&self) -> Square {
         (MASK_SQUARE & self.0) as Square
     }
 
+    #[inline(always)]
     pub fn to(&self) -> Square {
         (MASK_SQUARE & (self.0 >> MOVE_TO_OFFSET)) as Square
     }
 
+    #[inline(always)]
     pub fn is_promotion(&self) -> bool {
         (self.0 >> MOVE_PROMOTION_OFFSET) & SINGLE_FLAG == 1
     }
 
+    #[inline(always)]
     pub fn is_capture_and_en_passant(&self) -> bool {
-        (self.0 >> MOVE_SPECIAL_OFFSET) & FLAG_EN_PASSANT_CAPTURE != 0
+        (self.0 >> MOVE_SPECIAL_OFFSET) & SPECIAL_MASK == FLAG_EN_PASSANT_CAPTURE
     }
 
+    #[inline(always)]
     pub fn promoted_piece(&self) -> Piece {
         (((self.0 >> MOVE_SPECIAL_OFFSET) & PROMOTED_PIECE_MASK) + 1) as Piece
     }
 
+    #[inline(always)]
     pub fn moving_piece(&self) -> Piece {
         ((self.0 >> MOVE_MOVING_OFFSET) & MASK_PIECE) as Piece
     }
 
+    #[inline(always)]
     pub fn is_castle_and_where(&self) -> Option<CastlingSide> {
-        let castle_side = self.0 >> MOVE_SPECIAL_OFFSET & CASTLE_MASK;
-        if castle_side == 0 {
-            None
-        }
-        else if castle_side == 0b11 {
+        let castle_side = (self.0 >> MOVE_SPECIAL_OFFSET) & SPECIAL_MASK;
+        if castle_side == 0b11 {
             Some(CastlingSide::QueenSide)
         }
-        else {
+        else if castle_side == 0b10 {
             Some(CastlingSide::KingSide)
+        } else {
+            None
         }
     }
 
+    #[inline(always)]
     pub fn is_double_pawn_push(&self) -> bool {
         ((self.0 >> MOVE_SPECIAL_OFFSET) & SPECIAL_MASK) == 0b1
+    }
+
+    #[inline(always)]
+    pub fn square_to_algebraic(square: Square) -> String {
+        let file = (square % 8) as u8 + b'a';
+        let rank = (square / 8) as u8 + b'1';
+        format!("{}{}", file as char, rank as char)
+    }
+
+    #[inline(always)]
+    pub fn to_algebraic(self) -> String {
+        format!("{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()))
     }
 }
 
@@ -149,6 +176,7 @@ impl MoveList {
         }
     }
 
+    #[inline(always)]
     pub fn add_move(&mut self, r#move: Move) {
         assert!(self.length as usize <= MAX_MOVES);
         self.moves[self.length as usize] = r#move;
@@ -165,7 +193,7 @@ impl Iterator for MoveIterator {
     type Item = Move;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.move_list.length - 1 {
+        if self.index >= self.move_list.length {
             return None;
         }
         let r#move = self.move_list.moves[self.index as usize];
@@ -193,5 +221,123 @@ impl BitOr<u32> for Move {
     #[inline(always)]
     fn bitor(self, rhs: u32) -> Self::Output {
         Move(self.0 | rhs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::gamestate::{PAWN, QUEEN, ROOK, KNIGHT};
+    use crate::r#move::Move;
+
+    #[test]
+    fn test_new_from_to() {
+        let from = 63;
+        let to = 0;
+        let moving = PAWN;
+        let r#move = Move::new_from_to(from, to, moving);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), moving);
+        assert!(!r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_promotion());
+        assert!(!r#move.is_double_pawn_push());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_capture() {
+        let from = 0;
+        let to = 63;
+        let moving = QUEEN;
+        let captured = ROOK;
+        let r#move = Move::new_capture(from, to, moving, captured);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), moving);
+        assert_eq!(r#move.captured_piece(), captured);
+        assert!(r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_double_pawn_push());
+        assert!(!r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_en_passant_capture() {
+        let from = 63;
+        let to = 31;
+        let r#move = Move::new_en_passant_capture(from, to);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), PAWN);
+        assert_eq!(r#move.captured_piece(), PAWN);
+        assert!(r#move.is_capture());
+        assert!(r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_double_pawn_push());
+        assert!(!r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_double_pawn_push() {
+        let from = 63; 
+        let to = 63;
+        let r#move = Move::new_double_pawn_push(from, to);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), PAWN);
+        assert!(!r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(r#move.is_double_pawn_push());
+        assert!(!r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_quiet_promotion() {
+        let from = 10;
+        let to = 57;
+        let promoted_piece = KNIGHT;
+        let r#move = Move::new_quiet_promotion(from, to, promoted_piece);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), PAWN);
+        assert_eq!(r#move.promoted_piece(), promoted_piece);
+        assert!(!r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_double_pawn_push());
+        assert!(r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_capture_promotion() {
+        let from = 15;
+        let to = 40;
+        let promoted_piece = KNIGHT;
+        let captured_piece = QUEEN;
+        let r#move = Move::new_capture_promotion(from, to, promoted_piece, captured_piece);
+        assert_eq!(r#move.from(), from);
+        assert_eq!(r#move.to(), to);
+        assert_eq!(r#move.moving_piece(), PAWN);
+        assert_eq!(r#move.promoted_piece(), promoted_piece);
+        assert_eq!(r#move.captured_piece(), captured_piece);
+        assert!(r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_double_pawn_push());
+        assert!(r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), None);
+    }
+
+    #[test]
+    fn test_new_castle() {
+        let r#move = Move::new_castle(super::CastlingSide::KingSide);
+        assert!(!r#move.is_capture());
+        assert!(!r#move.is_capture_and_en_passant());
+        assert!(!r#move.is_double_pawn_push());
+        assert!(!r#move.is_promotion());
+        assert_eq!(r#move.is_castle_and_where(), Some(super::CastlingSide::KingSide));
     }
 }
