@@ -392,7 +392,8 @@ impl GameState {
         danger_squares
     }
 
-    fn king_danger_squares(&self, our_side: Side, blockers: Bitboard) -> Bitboard {
+    #[inline(always)]
+    pub fn king_danger_squares(&self, our_side: Side, blockers: Bitboard) -> Bitboard {
         self.attacked_squares(our_side ^ 1, blockers & !self.piece_boards[our_side][KING])
     }
 
@@ -417,13 +418,13 @@ fn queen_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
 }
 
 #[inline(always)]
-fn bishop_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
+pub fn bishop_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
     let index = magic_index(BISHOP_MAGICS_AND_PLAYS[square].0, blockers);
     BISHOP_MAGICS_AND_PLAYS[square].1[index]
 }
 
 #[inline(always)]
-fn rook_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
+pub fn rook_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
     let index = magic_index(ROOK_MAGICS_AND_PLAYS[square].0, blockers);
     ROOK_MAGICS_AND_PLAYS[square].1[index]
 }
@@ -541,11 +542,11 @@ mod tests {
     #[test]
     fn perft_starting_pos() {
         let mut starting_pos = GameState::new_starting_pos();
-        // assert_eq!(perft(&mut starting_pos, 0), 1);
+        assert_eq!(perft(&mut starting_pos, 0), 1);
         assert_eq!(perft(&mut starting_pos, 1), 20);
         assert_eq!(perft(&mut starting_pos, 2), 400);
-        // assert_eq!(perft(&mut starting_pos, 3), 8902);
-        // assert_eq!(perft(&mut starting_pos, 4), 197281);
-        // assert_eq!(perft(&mut starting_pos, 5), 4865609);
+        assert_eq!(perft(&mut starting_pos, 3), 8902);
+        assert_eq!(perft(&mut starting_pos, 4), 197281);
+        assert_eq!(perft(&mut starting_pos, 5), 4865609);
     }
 }

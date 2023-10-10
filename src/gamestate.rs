@@ -41,7 +41,7 @@ const C1: Square = 2;
 const E8: Square = 60;
 
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone)]
 pub struct GameState {
     pub piece_boards: [[Bitboard; NUM_OF_PIECES]; NUM_OF_PLAYERS],
     plys: Ply,
@@ -134,7 +134,7 @@ impl GameState {
     }
 
     pub fn apply_move(&mut self, r#move: Move) {
-        self.history.push(History { r#move, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
+        self.history.push(History { r#move, en_passant: self.en_passant_board, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();
         let our_side = self.side_to_move();
@@ -261,6 +261,7 @@ impl GameState {
         self.castling_rights = past.castling_rights;
         self.fifty_move_rule = past.fifty_move_rule;
         self.zobrist = past.zobrist;
+        self.en_passant_board = past.en_passant;
     }
 
     fn handle_double_pawn_push(&mut self, to: Square, our_side: Side) {
@@ -411,10 +412,33 @@ fn rank_file_to_square(file: Square, rank: Square) -> Square {
     rank * 8 + file
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default, PartialEq, Clone, Copy)]
 struct History {
     r#move: Move,
     fifty_move_rule: Ply,
     castling_rights: [bool; 4],
     zobrist: ZobristHash,
+    en_passant: Bitboard,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gamestate::{WHITE, PAWN};
+
+    use super::GameState;
+
+    #[test]
+    fn test_do_undo_move() {
+        let mut starting_pos = GameState::new_starting_pos();
+        let moves = starting_pos.generate_moves();
+        for m in moves {
+            let old_state = starting_pos.clone();
+            starting_pos.apply_move(m);
+            starting_pos.undo_move();
+            if old_state == starting_pos {
+            } else {
+                assert_eq!(true, false);
+            }
+        }
+    }
 }

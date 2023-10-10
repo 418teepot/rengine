@@ -1,7 +1,10 @@
 use std::process::exit;
 use std::env;
 
-use gamestate::{GameState, WHITE, KING, BLACK, PAWN};
+use bitboard::Bitboard;
+use gamestate::{GameState, WHITE, KING, BLACK, PAWN, BISHOP};
+use magic::{relevant_slider_blockers, slider_plays_for_blockers};
+use movegen::{bishop_move_bitboard, rook_move_bitboard};
 use r#move::Move;
 use uci::perft_debug;
 
@@ -20,6 +23,5 @@ mod uci;
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
     let mut gs = GameState::new_starting_pos();
-    // gs.apply_move(Move::new_from_to(14, 22, PAWN));
     perft_debug(&mut gs, 4);
 }

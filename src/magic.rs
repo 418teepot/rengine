@@ -39,7 +39,8 @@ pub struct MagicEntry {
 pub fn magic_index(entry: MagicEntry, blockers: Bitboard) -> usize {
     let relevant_blockers = blockers & entry.mask;
     let hash = relevant_blockers.0.wrapping_mul(entry.magic);
-    (hash >> (64 - entry.index_bits)) as usize
+    let index = (hash >> (64 - entry.index_bits)) as usize;
+    index
 }
 
 fn find_magic_entry(piece: Piece, square: Square) -> (MagicEntry, Vec<Bitboard>) {
@@ -57,13 +58,18 @@ fn find_magic_entry(piece: Piece, square: Square) -> (MagicEntry, Vec<Bitboard>)
 fn try_make_table(piece: Piece, square: Square, entry_candidate: MagicEntry) -> Option<Vec<Bitboard>> {
     let mut possible_table = vec![Bitboard::empty(); 1 << entry_candidate.index_bits];
     let relevancy_mask = relevant_slider_blockers(square, piece);
-    for blockers in relevancy_mask.iter_all_subsets() {
-        let plays = slider_plays_for_blockers(square, piece, blockers);
-        let magic_index = magic_index(entry_candidate, blockers);
+    let mut blockers: u64 = 0;
+    loop {
+        let plays = slider_plays_for_blockers(square, piece, Bitboard(blockers));
+        let magic_index = magic_index(entry_candidate, Bitboard(blockers));
         if possible_table[magic_index] == Bitboard(0) {
             possible_table[magic_index] = plays;
         } else {
             return None;
+        }
+        blockers = blockers.wrapping_sub(relevancy_mask.0) & relevancy_mask.0;
+        if blockers == 0 {
+            break;
         }
     }
     Some(possible_table)
@@ -110,12 +116,13 @@ pub fn slider_plays_for_blockers(square: Square, piece: Piece, blockers: Bitboar
 }
 
 static ROOK_RAYS: [i8; 4] = [1, -1, 10, -10];
-static BISHOP_RAYS: [i8; 4] = [11, -11, -9, 9];
+static BISHOP_RAYS: [i8; 4] = [11, -11, 9, -9];
 
 fn get_rays_for_piece(piece: Piece) -> &'static [i8] {
     if piece == ROOK { &ROOK_RAYS } else if piece == BISHOP { &BISHOP_RAYS } else { panic!("Wrong piece in blokcer mask inputed.") }
 }
 
+/* 
 pub struct BitSubset {
     set: Bitboard,
     subset: Bitboard,
@@ -126,6 +133,7 @@ impl BitSubset {
         BitSubset {
             set,
             subset: Bitboard(0),
+            
         }
     }
 }
@@ -136,18 +144,20 @@ impl Iterator for BitSubset {
     fn next(&mut self) -> Option<Self::Item> {
         self.subset = Bitboard(self.subset.0.wrapping_sub(self.set.0)) & self.set;
         if self.subset == Bitboard(0) {
-            None
+            return None
         } else {
-            Some(self.subset)
+            return Some(self.subset)
         }
+        
     }
 }
 
 impl Bitboard {
-    fn iter_all_subsets(&self) -> BitSubset {
+    pub fn iter_all_subsets(&self) -> BitSubset {
         BitSubset::new(*self)
     }
 }
+*/
 
 lazy_static! {
     pub static ref ROOK_MAGICS_AND_PLAYS: Vec<(MagicEntry, Vec<Bitboard>)> = {
