@@ -1,4 +1,4 @@
-use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd, Not, Shl, Shr};
+use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd, Not, Shl, Shr, BitXor};
 
 #[derive(PartialEq, Default, Copy, Clone, Debug)]
 pub struct Bitboard(pub u64);
@@ -163,5 +163,14 @@ impl Shr<usize> for Bitboard {
     #[inline(always)]
     fn shr(self, rhs: usize) -> Self::Output {
         Bitboard(self.0 >> rhs)
+    }
+}
+
+impl BitXor for Bitboard {
+    type Output = Bitboard;
+
+    #[inline(always)]
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Bitboard(self.0 ^ rhs.0)
     }
 }

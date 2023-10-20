@@ -25,20 +25,20 @@ pub const WHITE_QUEENSIDE_CASTLE: usize = 0;
 pub const BLACK_QUEENSIDE_CASTLE: usize = 2;
 pub const BLACK_KINGSIDE_CASTLE: usize = 3;
 
-const A8: Square = 56;
-const H8: Square = 63;
-const D8: Square = 59;
-const C8: Square = 58;
-const G8: Square = 62;
-const F8: Square = 61;
-const A1: Square = 0;
-const H1: Square = 7;
-const F1: Square = 5;
-const D1: Square = 3;
-const E1: Square = 4;
-const G1: Square = 6;
-const C1: Square = 2;
-const E8: Square = 60;
+pub const A8: Square = 56;
+pub const H8: Square = 63;
+pub const D8: Square = 59;
+pub const C8: Square = 58;
+pub const G8: Square = 62;
+pub const F8: Square = 61;
+pub const A1: Square = 0;
+pub const H1: Square = 7;
+pub const F1: Square = 5;
+pub const D1: Square = 3;
+pub const E1: Square = 4;
+pub const G1: Square = 6;
+pub const C1: Square = 2;
+pub const E8: Square = 60;
 
 
 #[derive(Default, PartialEq, Clone)]
@@ -254,9 +254,9 @@ impl GameState {
 
         if let Some(castle_side) = r#move.is_castle_and_where() {
             self.undo_castle(castle_side, our_side);
+        } else {
+            self.move_piece(to, from, moving_piece, our_side);
         }
-
-        self.move_piece(to, from, moving_piece, our_side);
 
         self.castling_rights = past.castling_rights;
         self.fifty_move_rule = past.fifty_move_rule;
@@ -308,12 +308,12 @@ impl GameState {
         if our_side == WHITE {
             match castling_side {
                 CastlingSide::QueenSide => {
-                    self.move_piece(D8, A8, ROOK, our_side);
-                    self.move_piece(C8, E8, KING, our_side);
+                    self.move_piece(D1, A1, ROOK, our_side);
+                    self.move_piece(C1, E1, KING, our_side);
                 },
                 CastlingSide::KingSide => {
-                    self.move_piece(F8, H8, ROOK, our_side);
-                    self.move_piece(G8, E8, KING, our_side);
+                    self.move_piece(F1, H1, ROOK, our_side);
+                    self.move_piece(G1, E1, KING, our_side);
                 }
             }
             return;
@@ -358,22 +358,18 @@ impl GameState {
                 self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
             }
         }
-        else {
-            if to == A1 {
+        else if to == A1 {
                 self.remove_castling_right(WHITE_QUEENSIDE_CASTLE);
             }
             else if to == H1 {
                 self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
             }
-        }
+        
     }
 
     #[inline(always)]
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
-        if square >= 64 {
-            println!("Hi");
-        }
         self.zobrist.add_piece(square, piece, side);
     }
 
@@ -402,8 +398,59 @@ impl GameState {
         }
     }
 
+    #[inline(always)]
     pub fn side_to_move(&self) -> Side {
         self.plys & 1
+    }
+
+    pub fn print_debug(&self) {
+        let mut rank: isize = 7;
+        let mut file: isize = 0;
+        loop {
+            let square = rank * 8 + file;
+            print!("{}",
+                match self.find_piece_on_all(square as usize) {
+                    None => '.',
+                    Some((side, piece)) => {
+                        match side {
+                            WHITE => {
+                                match piece {
+                                    PAWN => 'P',
+                                    ROOK => 'R',
+                                    BISHOP => 'B',
+                                    KNIGHT => 'N',
+                                    QUEEN => 'Q',
+                                    KING => 'K',
+                                    _ => unreachable!(),
+                                }
+                            },
+                            BLACK => {
+                                match piece {
+                                PAWN => 'p',
+                                ROOK => 'r',
+                                BISHOP => 'b',
+                                KNIGHT => 'n',
+                                QUEEN => 'q',
+                                KING => 'k',
+                                _ => unreachable!(),
+                                }
+                            },
+                            _ => unreachable!(),
+                        }
+                    },
+                }
+            );
+
+            file += 1;
+            if file == 8 {
+                println!();
+                file = 0;
+                rank -= 1;
+                if rank < 0 {
+                    return
+                }
+            }
+        }
     }
 }
 

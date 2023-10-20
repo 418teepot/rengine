@@ -1,6 +1,7 @@
 use std::string;
 use std::io::Write;
 use std::io::stdout;
+use std::time::{Duration, Instant};
 
 use crate::gamestate::GameState;
 
@@ -31,4 +32,26 @@ pub fn perft(state: &mut GameState, depth: u32) -> u32 {
         state.undo_move();
     }
     nodes
+}
+
+pub fn check_wrong_undo(state: &mut GameState) {
+
+    for r#move in state.generate_moves() {
+        let state_old = state.clone();
+        state.apply_move(r#move);
+        state.undo_move();
+        if state_old != *state {
+            println!("Error found here");
+            println!("{}", r#move.to_algebraic());
+            state.print_debug();
+        }
+    }
+}
+
+pub fn perft_timed(state: &mut GameState, depth: u32) {
+    let start = Instant::now();
+    let result = perft(state, depth);
+    let duration = start.elapsed().as_millis();
+    let nps = (result as u128 / duration) * 1000;
+    println!("Searched {result} nodes\n{nps} Np/s");
 }

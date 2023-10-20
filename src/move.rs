@@ -1,5 +1,5 @@
 use crate::bitboard::Square;
-use crate::gamestate::{Piece, PAWN};
+use crate::gamestate::{Piece, PAWN, KING};
 use std::ops::BitOr;
 
 const MAX_MOVES: usize = 100;
@@ -75,10 +75,10 @@ impl Move {
 
     #[inline(always)]
     // TODO: Expand into 2 functions
-    pub fn new_castle(side: CastlingSide) -> Self {
+    pub fn new_castle(side: CastlingSide, from: Square, to: Square) -> Self {
         match side {
-            CastlingSide::QueenSide => Move(QUEENSIDE_CASTLE),
-            CastlingSide::KingSide => Move(KINGSIDE_CASTLE),
+            CastlingSide::QueenSide => Self::new_from_to(from, to, KING) | QUEENSIDE_CASTLE,
+            CastlingSide::KingSide => Self::new_from_to(from, to, KING) | KINGSIDE_CASTLE,
         }
     }
 
@@ -331,13 +331,4 @@ mod tests {
         assert_eq!(r#move.is_castle_and_where(), None);
     }
 
-    #[test]
-    fn test_new_castle() {
-        let r#move = Move::new_castle(super::CastlingSide::KingSide);
-        assert!(!r#move.is_capture());
-        assert!(!r#move.is_capture_and_en_passant());
-        assert!(!r#move.is_double_pawn_push());
-        assert!(!r#move.is_promotion());
-        assert_eq!(r#move.is_castle_and_where(), Some(super::CastlingSide::KingSide));
-    }
 }
