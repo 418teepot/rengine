@@ -1,6 +1,6 @@
 use crate::bitboard::{Bitboard, Square};
 use crate::gamestate::{Piece, ROOK, BISHOP};
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 
 pub static mailbox: [i8; 120] = [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -39,8 +39,7 @@ pub struct MagicEntry {
 pub fn magic_index(entry: MagicEntry, blockers: Bitboard) -> usize {
     let relevant_blockers = blockers & entry.mask;
     let hash = relevant_blockers.0.wrapping_mul(entry.magic);
-    let index = (hash >> (64 - entry.index_bits)) as usize;
-    index
+    (hash >> (64 - entry.index_bits)) as usize
 }
 
 fn find_magic_entry(piece: Piece, square: Square) -> (MagicEntry, Vec<Bitboard>) {
@@ -121,43 +120,6 @@ static BISHOP_RAYS: [i8; 4] = [11, -11, 9, -9];
 fn get_rays_for_piece(piece: Piece) -> &'static [i8] {
     if piece == ROOK { &ROOK_RAYS } else if piece == BISHOP { &BISHOP_RAYS } else { panic!("Wrong piece in blokcer mask inputed.") }
 }
-
-/* 
-pub struct BitSubset {
-    set: Bitboard,
-    subset: Bitboard,
-}
-
-impl BitSubset {
-    pub fn new(set: Bitboard) -> BitSubset {
-        BitSubset {
-            set,
-            subset: Bitboard(0),
-            
-        }
-    }
-}
-
-impl Iterator for BitSubset {
-    type Item = Bitboard;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.subset = Bitboard(self.subset.0.wrapping_sub(self.set.0)) & self.set;
-        if self.subset == Bitboard(0) {
-            return None
-        } else {
-            return Some(self.subset)
-        }
-        
-    }
-}
-
-impl Bitboard {
-    pub fn iter_all_subsets(&self) -> BitSubset {
-        BitSubset::new(*self)
-    }
-}
-*/
 
 lazy_static! {
     pub static ref ROOK_MAGICS_AND_PLAYS: Vec<(MagicEntry, Vec<Bitboard>)> = {

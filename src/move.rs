@@ -1,8 +1,9 @@
 use crate::bitboard::Square;
 use crate::gamestate::{Piece, PAWN, KING};
+use crate::search::Eval;
 use std::ops::BitOr;
 
-const MAX_MOVES: usize = 100;
+pub const MAX_MOVES: usize = 200;
 const NULLMOVE: Move = Move(0);
 
 /// Represents a chess move. Captured piece and moving piece is stored here as well for fast undo_move().
@@ -37,7 +38,6 @@ const FLAG_QUIET_PROMOTION: u32 = 0b1000;
 const MASK_SQUARE: u32 = 0b111111;
 const PROMOTED_PIECE_MASK: u32 = 0b11;
 const MASK_PIECE: u32 = 0b111;
-const CASTLE_MASK: u32 = 0b11;
 const SPECIAL_MASK: u32 = 0b1111;
 
 const SINGLE_FLAG: u32 = 0b1;
@@ -99,7 +99,7 @@ impl Move {
 
     #[inline(always)]
     pub fn captured_piece(&self) -> Piece {
-        (self.0 >> MOVE_CAPTURED_OFFSET) as Piece
+        ((self.0 >> MOVE_CAPTURED_OFFSET) & MASK_PIECE) as Piece
     }
 
     #[inline(always)]
@@ -163,15 +163,18 @@ impl Move {
     }
 }
 
+#[derive(Copy, Debug, Clone)]
 pub struct MoveList {
-    moves: [Move; MAX_MOVES],
-    length: u8,
+    pub moves: [Move; MAX_MOVES],
+    pub values: [Eval; MAX_MOVES],
+    pub length: u8,
 }
 
 impl MoveList {
     pub fn new() -> MoveList {
         MoveList {
             moves: [NULLMOVE; MAX_MOVES],
+            values: [0; MAX_MOVES],
             length: 0,
         }
     }
@@ -181,6 +184,20 @@ impl MoveList {
         assert!(self.length as usize <= MAX_MOVES);
         self.moves[self.length as usize] = r#move;
         self.length += 1;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+    pub fn captures(self) -> MoveList {
+        let mut moves = MoveList::new();
+        for r#move in self {
+            if r#move.is_capture() {
+                moves.add_move(r#move);
+            }
+        }
+        moves
     }
 }
 

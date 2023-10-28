@@ -1,5 +1,5 @@
 use crate::bitboard::{Bitboard, Square};
-use crate::gamestate::{GameState, KING, Side, Piece, PAWN, ROOK, KNIGHT, BISHOP, QUEEN, NUM_OF_PIECES, WHITE, WHITE_QUEENSIDE_CASTLE, WHITE_KINGSIDE_CASTLE, BLACK_QUEENSIDE_CASTLE, NUM_OF_PLAYERS, BLACK_KINGSIDE_CASTLE, E1, C1, G1, E8, C8, G8};
+use crate::gamestate::{GameState, KING, Side, Piece, PAWN, ROOK, KNIGHT, BISHOP, QUEEN, NUM_OF_PIECES, WHITE, WHITE_QUEENSIDE_CASTLE, WHITE_KINGSIDE_CASTLE, BLACK_QUEENSIDE_CASTLE, NUM_OF_PLAYERS, BLACK_KINGSIDE_CASTLE, E1, C1, G1, E8, C8, G8, BLACK};
 use crate::magic::{mailbox64, mailbox, BISHOP_MAGICS_AND_PLAYS, magic_index, ROOK_MAGICS_AND_PLAYS};
 use crate::r#move::{MoveList, self};
 use crate::r#move::Move;
@@ -11,18 +11,18 @@ const RANK_8: usize = 7;
 const RANK_1: usize = 0;
 const RANK_7: usize = 6;
 
-const CASTLE_WHITE_QUEENSIDE_FREE: Bitboard = Bitboard(0b00001110);
-const CASTLE_WHITE_QUEENSIDE_CHECK_FREE: Bitboard = Bitboard(0b00011100);
-const CASTLE_WHITE_KINGSIDE_FREE: Bitboard = Bitboard(0b01100000);
-const CASTLE_WHITE_KINGSIDE_CHECK_FREE: Bitboard = Bitboard(0b01110000);
+pub const CASTLE_WHITE_QUEENSIDE_FREE: Bitboard       = Bitboard(0b00001110);
+pub const CASTLE_WHITE_QUEENSIDE_CHECK_FREE: Bitboard = Bitboard(0b00011100);
+pub const CASTLE_WHITE_KINGSIDE_FREE: Bitboard        = Bitboard(0b01100000);
+pub const CASTLE_WHITE_KINGSIDE_CHECK_FREE: Bitboard  = Bitboard(0b01110000);
 
-const CASTLE_BLACK_QUEENSIDE_FREE: Bitboard       = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_0000000);
-const CASTLE_BLACK_QUEENSIDE_CHECK_FREE: Bitboard = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_00000000);
-const CASTLE_BLACK_KINGSIDE_FREE: Bitboard        = Bitboard(0b11_0000000000_0000000000_0000000000_0000000000_0000000000_0000000000_0);
-const CASTLE_BLACK_KINGSIDE_CHECK_FREE: Bitboard  = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_0000000000);
+pub const CASTLE_BLACK_QUEENSIDE_FREE: Bitboard       = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_0000000);
+pub const CASTLE_BLACK_QUEENSIDE_CHECK_FREE: Bitboard = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_00000000);
+pub const CASTLE_BLACK_KINGSIDE_FREE: Bitboard        = Bitboard(0b11_0000000000_0000000000_0000000000_0000000000_0000000000_0000000000_0);
+pub const CASTLE_BLACK_KINGSIDE_CHECK_FREE: Bitboard  = Bitboard(0b111_0000000000_0000000000_0000000000_0000000000_0000000000_0000000000);
 
 impl GameState {
-    pub fn generate_moves(&mut self) -> MoveList {
+    pub fn generate_legal_moves(&mut self) -> MoveList {
         let mut moves = MoveList::new();
 
         let our_side = self.side_to_move();
@@ -33,7 +33,7 @@ impl GameState {
         let king_danger_squares = self.king_danger_squares(our_side, blockers);
 
         let our_king_position = self.piece_boards[our_side][KING].next_piece_index();
-        let king_moves = KING_MOVES[our_king_position] & !king_danger_squares & !our_occupancy;
+        let king_moves: Bitboard = KING_MOVES[our_king_position] & !king_danger_squares & !our_occupancy;
 
         // King Moves
         for to_square in king_moves {
@@ -156,18 +156,27 @@ impl GameState {
             let pawn_single_moves = ((self.piece_boards[our_side][PAWN] & !pin_d12) << 8) & !blockers & evade_check_mask;
             // Promotions
             for to_square in pawn_single_moves & RANK_BITMASK[RANK_8] {
+                if pin_hv.has(to_square - 8) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 for piece in ROOK..=QUEEN {
                     moves.add_move(Move::new_quiet_promotion(to_square - 8, to_square, piece));
                 }
             }
             // Quiets
             for to_square in pawn_single_moves & !RANK_BITMASK[RANK_8] {
+                if pin_hv.has(to_square - 8) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 moves.add_move(Move::new_from_to(to_square - 8, to_square, PAWN));
             }
 
             // Double pawn push
             let pawn_double_moves = ((((self.piece_boards[our_side][PAWN] & !pin_d12 & RANK_BITMASK[RANK_2]) << 8) & !blockers) << 8) & !blockers & evade_check_mask;
             for to_square in pawn_double_moves {
+                if pin_hv.has(to_square - 16) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 moves.add_move(Move::new_double_pawn_push(to_square - 16, to_square));
             }
 
@@ -214,7 +223,7 @@ impl GameState {
                 let en_passant_pos = self.en_passant_board.next_piece_index();
                 if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7) & self.en_passant_board).is_filled() {
                     let r#move = Move::new_en_passant_capture(en_passant_pos - 7, en_passant_pos);
-                    self.apply_move(r#move);
+                    self.apply_legal_move(r#move);
                     if self.attackers_on_square(our_king_position, enemy_side, self.occupancy(our_side) | self.occupancy(enemy_side)).0.count_ones() == 0 {
                         moves.add_move(r#move);
                     }
@@ -222,7 +231,7 @@ impl GameState {
                 }
                 if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9) & self.en_passant_board).is_filled() {
                     let r#move = Move::new_en_passant_capture(en_passant_pos - 9, en_passant_pos);
-                    self.apply_move(r#move);
+                    self.apply_legal_move(r#move);
                     if self.attackers_on_square(our_king_position, enemy_side, self.occupancy(our_side) | self.occupancy(enemy_side)).0.count_ones() == 0 {
                         moves.add_move(r#move);
                     }
@@ -247,18 +256,27 @@ impl GameState {
             let pawn_single_moves = ((self.piece_boards[our_side][PAWN] & !pin_d12) >> 8) & !blockers & evade_check_mask;
             // Promotions
             for to_square in pawn_single_moves & RANK_BITMASK[RANK_1] {
+                if pin_hv.has(to_square + 8) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 for piece in ROOK..=QUEEN {
                     moves.add_move(Move::new_quiet_promotion(to_square + 8, to_square, piece));
                 }
             }
             // Quiets
             for to_square in pawn_single_moves & !RANK_BITMASK[RANK_1] {
+                if pin_hv.has(to_square + 8) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 moves.add_move(Move::new_from_to(to_square + 8, to_square, PAWN));
             }
 
             // Double pawn push
             let pawn_double_moves = ((((self.piece_boards[our_side][PAWN] & !pin_d12 & RANK_BITMASK[RANK_7]) >> 8) & !blockers) >> 8) & !blockers & evade_check_mask;
             for to_square in pawn_double_moves {
+                if pin_hv.has(to_square + 16) && !pin_hv.has(to_square) {
+                    continue;
+                }
                 moves.add_move(Move::new_double_pawn_push(to_square + 16, to_square));
             }
 
@@ -305,7 +323,7 @@ impl GameState {
                 let en_passant_pos = self.en_passant_board.next_piece_index();
                 if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7) & self.en_passant_board).is_filled() {
                     let r#move = Move::new_en_passant_capture(en_passant_pos + 7, en_passant_pos);
-                    self.apply_move(r#move);
+                    self.apply_legal_move(r#move);
                     if self.attackers_on_square(our_king_position, enemy_side, self.occupancy(our_side) | self.occupancy(enemy_side)).0.count_ones() == 0 {
                         moves.add_move(r#move);
                     }
@@ -313,7 +331,7 @@ impl GameState {
                 }
                 if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) >> 9) & self.en_passant_board).is_filled() {
                     let r#move = Move::new_en_passant_capture(en_passant_pos + 9, en_passant_pos);
-                    self.apply_move(r#move);
+                    self.apply_legal_move(r#move);
                     if self.attackers_on_square(our_king_position, enemy_side, self.occupancy(our_side) | self.occupancy(enemy_side)).0.count_ones() == 0 {
                         moves.add_move(r#move);
                     }
@@ -335,6 +353,290 @@ impl GameState {
         }
 
         moves
+    }
+
+    pub fn generate_pseudo_legal_moves(&self) -> MoveList {
+        let mut move_list = MoveList::new();
+
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+        let our_occupancy = self.occupancy(our_side);
+        let enemy_occupancy = self.occupancy(enemy_side);
+        let blockers = our_occupancy | enemy_occupancy;
+
+        let king_pos = self.piece_boards[our_side][KING].next_piece_index();
+        let king_moves = king_move_bitboard(king_pos);
+        for to_square in king_moves & !blockers {
+            move_list.add_move(Move::new_from_to(king_pos, to_square, KING))
+        }
+        for to_square in king_moves & enemy_occupancy {
+            move_list.add_move(Move::new_capture(king_pos, to_square, KING, self.find_piece_on(to_square, enemy_side)))
+        }
+
+        for from_square in self.piece_boards[our_side][KNIGHT] {
+            let knight_moves = knight_move_bitboard(from_square);
+            for to_square in knight_moves & !blockers {
+                move_list.add_move(Move::new_from_to(from_square, to_square, KNIGHT))
+            }
+            for to_square in knight_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, KNIGHT, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+        
+        for from_square in self.piece_boards[our_side][ROOK] {
+            let rook_moves = rook_move_bitboard(from_square, blockers);
+            for to_square in rook_moves & !blockers {
+                move_list.add_move(Move::new_from_to(from_square, to_square, ROOK))
+            }
+            for to_square in rook_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, ROOK, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        for from_square in self.piece_boards[our_side][BISHOP] {
+            let bishop_moves = bishop_move_bitboard(from_square, blockers);
+            for to_square in bishop_moves & !blockers {
+                move_list.add_move(Move::new_from_to(from_square, to_square, BISHOP))
+            }
+            for to_square in bishop_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, BISHOP, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        for from_square in self.piece_boards[our_side][QUEEN] {
+            let queen_moves = queen_move_bitboard(from_square, blockers);
+            for to_square in queen_moves & !blockers {
+                move_list.add_move(Move::new_from_to(from_square, to_square, QUEEN))
+            }
+            for to_square in queen_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, QUEEN, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        if our_side == WHITE {
+            let pawn_single_moves = (self.piece_boards[our_side][PAWN] << 8) & !blockers;
+            for to_square in pawn_single_moves & !RANK_BITMASK[RANK_8] {
+                move_list.add_move(Move::new_from_to(to_square - 8, to_square, PAWN))
+            }
+            for to_square in pawn_single_moves & RANK_BITMASK[RANK_8] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_quiet_promotion(to_square - 8, to_square, piece))
+                }
+            }
+
+            let pawn_double_moves = ((((self.piece_boards[our_side][PAWN] & RANK_BITMASK[RANK_2]) << 8) & !blockers) << 8) & !blockers;
+            for to_square in pawn_double_moves {
+                move_list.add_move(Move::new_double_pawn_push(to_square - 16, to_square))
+            }
+
+            let pawn_up_left_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7) & enemy_occupancy;
+            for to_square in pawn_up_left_capture & !RANK_BITMASK[RANK_8] {
+                move_list.add_move(Move::new_capture(to_square - 7, to_square, PAWN, self.find_piece_on(to_square, enemy_side)))
+            }
+            for to_square in pawn_up_left_capture & RANK_BITMASK[RANK_8] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square - 7, to_square, piece, self.find_piece_on(to_square, enemy_side)))
+                }
+            }
+
+            let pawn_up_right_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9) & enemy_occupancy;
+            for to_square in pawn_up_right_capture & !RANK_BITMASK[RANK_8] {
+                move_list.add_move(Move::new_capture(to_square - 9, to_square, PAWN, self.find_piece_on(to_square, enemy_side)))
+            }
+            for to_square in pawn_up_right_capture & RANK_BITMASK[RANK_8] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square - 9, to_square, piece, self.find_piece_on(to_square, enemy_side)))
+                }
+            }
+
+            if self.en_passant_board.is_filled() {
+                let en_passant_pos = self.en_passant_board.next_piece_index();
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos - 7, en_passant_pos));
+                }
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos - 9, en_passant_pos));
+                }
+            }
+
+            if self.castling_rights[WHITE_QUEENSIDE_CASTLE] 
+            && (blockers & CASTLE_WHITE_QUEENSIDE_FREE).is_empty() {
+                move_list.add_move(Move::new_castle(r#move::CastlingSide::QueenSide, E1, C1));
+            }
+            if self.castling_rights[WHITE_KINGSIDE_CASTLE] 
+            && (blockers & CASTLE_WHITE_KINGSIDE_FREE).is_empty() {
+                move_list.add_move(Move::new_castle(r#move::CastlingSide::KingSide, E1, G1));
+            }
+        }
+        else {
+            let pawn_single_moves = ((self.piece_boards[our_side][PAWN]) >> 8) & !blockers;
+            for to_square in pawn_single_moves & RANK_BITMASK[RANK_1] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_quiet_promotion(to_square + 8, to_square, piece));
+                }
+            }
+            for to_square in pawn_single_moves & !RANK_BITMASK[RANK_1] {
+                move_list.add_move(Move::new_from_to(to_square + 8, to_square, PAWN));
+            }
+
+            let pawn_double_moves = ((((self.piece_boards[our_side][PAWN] & RANK_BITMASK[RANK_7]) >> 8) & !blockers) >> 8) & !blockers;
+            for to_square in pawn_double_moves {
+                move_list.add_move(Move::new_double_pawn_push(to_square + 16, to_square));
+            }
+
+            let pawn_down_right_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7) & enemy_occupancy;
+            for to_square in pawn_down_right_capture & !RANK_BITMASK[RANK_1] {
+                move_list.add_move(Move::new_capture(to_square + 7, to_square, PAWN, self.find_piece_on(to_square, enemy_side)));
+            }
+            for to_square in pawn_down_right_capture & RANK_BITMASK[RANK_1] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square + 7, to_square, piece, self.find_piece_on(to_square, enemy_side)));
+                }
+            }
+
+            let pawn_down_left_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) >> 9) & enemy_occupancy;
+            for to_square in pawn_down_left_capture & !RANK_BITMASK[RANK_1] {
+                move_list.add_move(Move::new_capture(to_square + 9, to_square, PAWN, self.find_piece_on(to_square, enemy_side)));
+            }
+            for to_square in pawn_down_left_capture & RANK_BITMASK[RANK_1] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square + 9, to_square, piece, self.find_piece_on(to_square, enemy_side)));
+                }
+            }
+
+            // EnPassant
+            if self.en_passant_board.is_filled() {
+                let en_passant_pos = self.en_passant_board.next_piece_index();
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos + 7, en_passant_pos));
+                }
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) >> 9) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos + 9, en_passant_pos));
+                }
+            }
+
+            // Castle
+            if self.castling_rights[BLACK_QUEENSIDE_CASTLE] 
+            && (blockers & CASTLE_BLACK_QUEENSIDE_FREE).is_empty() {
+                move_list.add_move(Move::new_castle(r#move::CastlingSide::QueenSide, E8, C8));
+            }
+            if self.castling_rights[BLACK_KINGSIDE_CASTLE]
+            && (blockers & CASTLE_BLACK_KINGSIDE_FREE).is_empty() {
+                move_list.add_move(Move::new_castle(r#move::CastlingSide::KingSide, E8, G8));
+            }
+        }
+
+        move_list
+    }
+
+    pub fn generate_pseudo_legal_captures(&self) -> MoveList {
+        let mut move_list = MoveList::new();
+
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+        let our_occupancy = self.occupancy(our_side);
+        let enemy_occupancy = self.occupancy(enemy_side);
+        let blockers = our_occupancy | enemy_occupancy;
+
+        let king_pos = self.piece_boards[our_side][KING].next_piece_index();
+        let king_moves = king_move_bitboard(king_pos);
+        for to_square in king_moves & enemy_occupancy {
+            move_list.add_move(Move::new_capture(king_pos, to_square, KING, self.find_piece_on(to_square, enemy_side)))
+        }
+
+        for from_square in self.piece_boards[our_side][KNIGHT] {
+            let knight_moves = knight_move_bitboard(from_square);
+            for to_square in knight_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, KNIGHT, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+        
+        for from_square in self.piece_boards[our_side][ROOK] {
+            let rook_moves = rook_move_bitboard(from_square, blockers);
+            for to_square in rook_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, ROOK, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        for from_square in self.piece_boards[our_side][BISHOP] {
+            let bishop_moves = bishop_move_bitboard(from_square, blockers);
+            for to_square in bishop_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, BISHOP, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        for from_square in self.piece_boards[our_side][QUEEN] {
+            let queen_moves = queen_move_bitboard(from_square, blockers);
+            for to_square in queen_moves & enemy_occupancy {
+                move_list.add_move(Move::new_capture(from_square, to_square, QUEEN, self.find_piece_on(to_square, enemy_side)))
+            }
+        }
+
+        if our_side == WHITE {
+            let pawn_up_left_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7) & enemy_occupancy;
+            for to_square in pawn_up_left_capture & !RANK_BITMASK[RANK_8] {
+                move_list.add_move(Move::new_capture(to_square - 7, to_square, PAWN, self.find_piece_on(to_square, enemy_side)))
+            }
+            for to_square in pawn_up_left_capture & RANK_BITMASK[RANK_8] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square - 7, to_square, piece, self.find_piece_on(to_square, enemy_side)))
+                }
+            }
+
+            let pawn_up_right_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9) & enemy_occupancy;
+            for to_square in pawn_up_right_capture & !RANK_BITMASK[RANK_8] {
+                move_list.add_move(Move::new_capture(to_square - 9, to_square, PAWN, self.find_piece_on(to_square, enemy_side)))
+            }
+            for to_square in pawn_up_right_capture & RANK_BITMASK[RANK_8] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square - 9, to_square, piece, self.find_piece_on(to_square, enemy_side)))
+                }
+            }
+
+            if self.en_passant_board.is_filled() {
+                let en_passant_pos = self.en_passant_board.next_piece_index();
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos - 7, en_passant_pos));
+                }
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos - 9, en_passant_pos));
+                }
+            }
+
+        }
+        else {
+            let pawn_down_right_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7) & enemy_occupancy;
+            for to_square in pawn_down_right_capture & !RANK_BITMASK[RANK_1] {
+                move_list.add_move(Move::new_capture(to_square + 7, to_square, PAWN, self.find_piece_on(to_square, enemy_side)));
+            }
+            for to_square in pawn_down_right_capture & RANK_BITMASK[RANK_1] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square + 7, to_square, piece, self.find_piece_on(to_square, enemy_side)));
+                }
+            }
+
+            let pawn_down_left_capture = ((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) >> 9) & enemy_occupancy;
+            for to_square in pawn_down_left_capture & !RANK_BITMASK[RANK_1] {
+                move_list.add_move(Move::new_capture(to_square + 9, to_square, PAWN, self.find_piece_on(to_square, enemy_side)));
+            }
+            for to_square in pawn_down_left_capture & RANK_BITMASK[RANK_1] {
+                for piece in ROOK..=QUEEN {
+                    move_list.add_move(Move::new_capture_promotion(to_square + 9, to_square, piece, self.find_piece_on(to_square, enemy_side)));
+                }
+            }
+
+            if self.en_passant_board.is_filled() {
+                let en_passant_pos = self.en_passant_board.next_piece_index();
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos + 7, en_passant_pos));
+                }
+                if (((self.piece_boards[our_side][PAWN] & !FILE_BITMASK[FILE_A]) >> 9) & self.en_passant_board).is_filled() {
+                    move_list.add_move(Move::new_en_passant_capture(en_passant_pos + 9, en_passant_pos));
+                }
+            }
+        }
+
+        move_list
     }
 
     pub fn get_hv_pinmask(&self, king_square: Square, blockers: Bitboard, enemy_side: Side) -> Bitboard {
@@ -369,9 +671,10 @@ impl GameState {
         maybe_moves_to_king & moves_from_king
     }
 
-    fn attackers_on_square(&self, square: Square, enemy_side: Side, blockers: Bitboard) -> Bitboard {
+    pub fn attackers_on_square(&self, square: Square, enemy_side: Side, blockers: Bitboard) -> Bitboard {
         let square_bitboard = Bitboard::square(square);
-        knight_move_bitboard(square) & self.piece_boards[enemy_side][KNIGHT]
+        king_move_bitboard(square) & self.piece_boards[enemy_side][KING]
+        | knight_move_bitboard(square) & self.piece_boards[enemy_side][KNIGHT]
         | rook_move_bitboard(square, blockers) & self.piece_boards[enemy_side][ROOK]
         | bishop_move_bitboard(square, blockers) & self.piece_boards[enemy_side][BISHOP]
         | queen_move_bitboard(square, blockers) & self.piece_boards[enemy_side][QUEEN]
@@ -404,8 +707,8 @@ impl GameState {
         }
 
         if enemy_side == WHITE {
-            danger_squares |= (self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[FILE_A]) << 9;
-            danger_squares |= (self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[FILE_H]) << 7;
+            danger_squares |= (self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[FILE_H]) << 9;
+            danger_squares |= (self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[FILE_A]) << 7;
         }
         else {
             danger_squares |= (self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[FILE_H]) >> 7;
@@ -424,7 +727,7 @@ impl GameState {
         self.piece_boards[side][PAWN] | self.piece_boards[side][ROOK] | self.piece_boards[side][KNIGHT] | self.piece_boards[side][BISHOP] | self.piece_boards[side][QUEEN] | self.piece_boards[side][KING]
     }
 
-    fn find_piece_on(&self, square: Square, side: Side) -> Piece {
+    pub fn find_piece_on(&self, square: Square, side: Side) -> Piece {
         let square_mask = Bitboard::square(square);
         for piece in 0..NUM_OF_PIECES {
             if (self.piece_boards[side][piece] & square_mask).is_filled() {
@@ -444,10 +747,18 @@ impl GameState {
         }
         None
     }
+
+    pub fn is_in_check(&self) -> bool {
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+        let our_king_pos = self.piece_boards[our_side][KING].next_piece_index();
+        let checkers = self.attackers_on_square(our_king_pos, enemy_side, self.occupancy(WHITE) | self.occupancy(BLACK));
+        checkers.0 != 0
+    }
 }
 
 #[inline(always)]
-fn queen_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
+pub fn queen_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
     bishop_move_bitboard(square, blockers) | rook_move_bitboard(square, blockers)
 }
 
@@ -464,12 +775,12 @@ pub fn rook_move_bitboard(square: Square, blockers: Bitboard) -> Bitboard {
 }
 
 #[inline(always)]
-fn knight_move_bitboard(square: Square) -> Bitboard {
+pub fn knight_move_bitboard(square: Square) -> Bitboard {
     KNIGHT_MOVES[square]
 }
 
 #[inline(always)]
-fn king_move_bitboard(square: Square) -> Bitboard {
+pub fn king_move_bitboard(square: Square) -> Bitboard {
     KING_MOVES[square]
 }
 

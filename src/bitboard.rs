@@ -108,6 +108,7 @@ pub struct BitboardIterator {
 impl Iterator for BitboardIterator {
     type Item = Square;
 
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
         if self.bitset == Bitboard(0) {
             return None;
@@ -122,7 +123,8 @@ impl IntoIterator for Bitboard {
     type Item = Square;
 
     type IntoIter = BitboardIterator;
-
+    
+    #[inline(always)]
     fn into_iter(self) -> Self::IntoIter {
         BitboardIterator {
             bitset: self,

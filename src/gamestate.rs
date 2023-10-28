@@ -1,5 +1,8 @@
+use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG};
+use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE, RAY_FROM_TO};
+use crate::search::Eval;
 use crate::bitboard::{Bitboard, Square};
-use crate::r#move::{Move, CastlingSide};
+use crate::r#move::{Move, CastlingSide, self};
 use crate::zobrist::ZobristHash;
 
 // TODO: Maybe smaller sizes?
@@ -44,12 +47,18 @@ pub const E8: Square = 60;
 #[derive(Default, PartialEq, Clone)]
 pub struct GameState {
     pub piece_boards: [[Bitboard; NUM_OF_PIECES]; NUM_OF_PLAYERS],
-    plys: Ply,
+    pub plys: Ply,
     pub en_passant_board: Bitboard,
     pub castling_rights: [bool; 4],
-    fifty_move_rule: Ply,
-    zobrist: ZobristHash,
-    history: Vec<History>,
+    pub fifty_move_rule: Ply,
+    pub zobrist: ZobristHash,
+    pub history: Vec<History>,
+    // Eval
+    pub material: [Eval; NUM_OF_PLAYERS],
+    pub psqt_mg: [Eval; NUM_OF_PLAYERS],
+    pub phase: i16,
+    pub psqt_eg: [Eval; NUM_OF_PLAYERS],
+    pub has_castled: [bool; NUM_OF_PLAYERS],
 }
 
 impl GameState {
@@ -133,7 +142,7 @@ impl GameState {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
 
-    pub fn apply_move(&mut self, r#move: Move) {
+    pub fn apply_legal_move(&mut self, r#move: Move) {
         self.history.push(History { r#move, en_passant: self.en_passant_board, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();
@@ -141,9 +150,14 @@ impl GameState {
         let enemy_side = our_side ^ 1;
         let moving_piece = r#move.moving_piece();
 
-        self.en_passant_board = Bitboard::empty();
+        if self.en_passant_board.is_filled() {
+            self.zobrist.remove_en_passant_square(self.en_passant_board.next_piece_index());
+            self.en_passant_board = Bitboard::empty();
+        }
+        
         self.fifty_move_rule += 1;
         self.plys += 1;
+        self.zobrist.flip_side_to_move();
 
         if r#move.is_capture() {
             self.fifty_move_rule = 0;
@@ -183,6 +197,77 @@ impl GameState {
         
     }
 
+    pub fn apply_pseudo_legal_move(&mut self, r#move: Move) -> bool {
+        let our_side = self.side_to_move();
+        let enemy_side = our_side ^ 1;
+
+        if let Some(side) = r#move.is_castle_and_where() {
+            let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
+            if our_side == WHITE {
+                if side == r#move::CastlingSide::QueenSide {
+                    for to_sq in CASTLE_WHITE_QUEENSIDE_CHECK_FREE {
+                        if self.attackers_on_square(to_sq, enemy_side, blockers).is_filled() {
+                            return false;
+                        }
+                    }
+                    self.apply_legal_move(r#move);
+                    return true;
+                }
+                else if side == r#move::CastlingSide::KingSide {
+                    for to_sq in CASTLE_WHITE_KINGSIDE_CHECK_FREE {
+                        if self.attackers_on_square(to_sq, enemy_side, blockers).is_filled() {
+                            return false;
+                        } 
+                    }
+                    self.apply_legal_move(r#move);
+                    return true;
+                }
+            } 
+            else if side == r#move::CastlingSide::QueenSide {
+                    for to_sq in CASTLE_BLACK_QUEENSIDE_CHECK_FREE {
+                        if self.attackers_on_square(to_sq, enemy_side, blockers).is_filled() {
+                            return false;
+                        }
+                    }
+                    self.apply_legal_move(r#move);
+                    return true;
+            }
+            else if side == r#move::CastlingSide::KingSide {
+                for to_sq in CASTLE_BLACK_KINGSIDE_CHECK_FREE {
+                    if self.attackers_on_square(to_sq, enemy_side, blockers).is_filled() {
+                        return false
+                    }
+                }
+                self.apply_legal_move(r#move);
+                return true;
+            }
+        }
+
+        self.apply_legal_move(r#move);
+        if self.attackers_on_square(self.piece_boards[our_side][KING].next_piece_index(), enemy_side, self.occupancy(WHITE) | self.occupancy(BLACK)).is_filled() {
+            self.undo_move();
+            return false;
+        }
+        
+        true
+
+    }
+
+    pub fn null_move(&mut self) {
+        self.history.push(History { r#move: Move::new_from_to(0, 0, 0), fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist, en_passant: self.en_passant_board });
+        self.plys += 1;
+        self.zobrist.flip_side_to_move();
+    }
+
+    pub fn undo_null_move(&mut self) {
+        self.plys -= 1;
+        let history = self.history.pop().unwrap();
+        self.zobrist = history.zobrist;
+        self.fifty_move_rule = history.fifty_move_rule;
+        self.en_passant_board = history.en_passant;
+        self.castling_rights = history.castling_rights;
+    }
+
     fn handle_castling_right_removing_moves(&mut self, from: Square, moving_piece: Piece, our_side: Side) {
         if moving_piece == PAWN {
             self.fifty_move_rule = 0;
@@ -215,14 +300,13 @@ impl GameState {
                 self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
             }
         }
-        else {
-            if from == A8 {
-                self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
-            }
-            else if from == H8 {
-                self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
-            }
+        else if from == A8 {
+            self.remove_castling_right(BLACK_QUEENSIDE_CASTLE);
         }
+        else if from == H8 {
+            self.remove_castling_right(BLACK_KINGSIDE_CASTLE);
+        }
+        
     }
 
     pub fn undo_move(&mut self) {
@@ -274,6 +358,7 @@ impl GameState {
     }
 
     fn do_castle(&mut self, casling_side: CastlingSide, our_side: Side) {
+        self.has_castled[our_side] = true;
         if our_side == WHITE {
             match casling_side {
                 CastlingSide::QueenSide => {
@@ -305,6 +390,7 @@ impl GameState {
     }
     
     fn undo_castle(&mut self, castling_side: CastlingSide, our_side: Side) {
+        self.has_castled[our_side] = false;
         if our_side == WHITE {
             match castling_side {
                 CastlingSide::QueenSide => {
@@ -371,12 +457,20 @@ impl GameState {
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
         self.zobrist.add_piece(square, piece, side);
+        self.material[side] += MATERIAL_VALUE[piece];
+        self.psqt_mg[side] += PSQT_MG[side][piece][square];
+        self.psqt_eg[side] += PSQT_EG[side][piece][square];
+        self.phase -= PHASE_WEIGHT[piece];
     }
 
     #[inline(always)]
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
+        self.material[side] -= MATERIAL_VALUE[piece];
+        self.psqt_mg[side] -= PSQT_MG[side][piece][square];
+        self.psqt_eg[side] -= PSQT_EG[side][piece][square];
+        self.phase += PHASE_WEIGHT[piece];
     }
 
     #[inline(always)]
@@ -460,12 +554,12 @@ fn rank_file_to_square(file: Square, rank: Square) -> Square {
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
-struct History {
-    r#move: Move,
-    fifty_move_rule: Ply,
-    castling_rights: [bool; 4],
-    zobrist: ZobristHash,
-    en_passant: Bitboard,
+pub struct History {
+    pub r#move: Move,
+    pub fifty_move_rule: Ply,
+    pub castling_rights: [bool; 4],
+    pub zobrist: ZobristHash,
+    pub en_passant: Bitboard,
 }
 
 #[cfg(test)]
@@ -477,10 +571,10 @@ mod tests {
     #[test]
     fn test_do_undo_move() {
         let mut starting_pos = GameState::new_starting_pos();
-        let moves = starting_pos.generate_moves();
+        let moves = starting_pos.generate_legal_moves();
         for m in moves {
             let old_state = starting_pos.clone();
-            starting_pos.apply_move(m);
+            starting_pos.apply_legal_move(m);
             starting_pos.undo_move();
             if old_state == starting_pos {
             } else {

@@ -4,8 +4,8 @@ use crate::gamestate::{Piece, Side, NUM_OF_PIECES, NUM_OF_PLAYERS, BLACK};
 use crate::bitboard::{Square, Bitboard, NUM_OF_SQUARES};
 use rand::Rng;
 
-#[derive(Default, Copy, Clone, PartialEq)]
-pub struct ZobristHash(i64);
+#[derive(Default, Copy, Clone, PartialEq, Debug)]
+pub struct ZobristHash(pub u64);
 
 // TODO: inline
 impl ZobristHash {
