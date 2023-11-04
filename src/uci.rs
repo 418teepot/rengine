@@ -1,8 +1,35 @@
+use std::fs::copy;
 use std::io::Write;
 use std::io::stdout;
 use std::time::Instant;
 
 use crate::gamestate::GameState;
+use crate::tt::TranspositionTable;
+use crate::r#move::Move;
+
+pub fn uci_loop() {
+    let mut input = String::new();
+
+}
+
+pub fn extract_pv(state: &mut GameState, t_table: &TranspositionTable) -> String {
+    let mut pv_string = String::new();
+    
+    let mut copy_state = state.clone();
+
+    let mut depth = 0;
+    while let Some(entry) = t_table.probe(copy_state.zobrist) {
+        if depth > entry.depth {
+            break;
+        }
+        let pvmove = entry.best_move;
+        pv_string.push_str(&format!("{} ", pvmove.to_algebraic()));
+        copy_state.apply_legal_move(pvmove);
+        depth += 1;
+    }
+
+    pv_string
+}
 
 pub fn perft_debug(state: &mut GameState, depth: u32) {
     assert!(depth > 0);

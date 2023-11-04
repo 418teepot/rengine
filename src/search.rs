@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, KING};
 use crate::r#move::{Move, MoveList};
 use crate::tt::TranspositionTable;
+use crate::uci::extract_pv;
 
 pub type Eval = i32;
 
@@ -30,7 +31,7 @@ pub struct SearchInfo {
 pub struct KillerTable([[Move; MAX_KILLER_MOVES]; MAX_SEARCH_DEPTH as usize]);
 
 impl SearchInfo {
-    fn new(begin: Instant, max_time: Duration) -> Self {
+    pub fn new(begin: Instant, max_time: Duration) -> Self {
         SearchInfo {
             killer_table: KillerTable::default(),
             trans_table: TranspositionTable::new(TRANS_TABLE_SIZE),
@@ -68,27 +69,28 @@ pub struct SearchData {
     pub nodes_visited: u32,
 }
 
-pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration) -> (Move, Eval) {
-    let mut search_info = SearchInfo::new(Instant::now(), max_time);
-    let begin = Instant::now();
+pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration, search_info: &mut SearchInfo) -> (Move, Eval) {
+    search_info.max_time = max_time;
+    search_info.begin = Instant::now();
+
     let mut best_move = Move::new_from_to(0, 0, 0);
     let mut best_eval = -INFINITY;
     let mut depth = 1;
     loop {
-        let (candidate_move, candidate_eval) = pick_best_move_timed(state, begin, max_time, depth, &mut search_info);
+        let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info);
         if search_info.time_over() {
+            search_info.trans_table.insert(state.zobrist, candidate_eval, crate::tt::TTEntryFlag::Alpha, depth, candidate_move);
             break;
         }
         (best_move, best_eval) = (candidate_move, candidate_eval);
-        /* 
+
         print!("info depth {depth} ");
-        print!("eval {} ", eval_into_white_viewpoint(best_eval, state.side_to_move()));
-        print!("tthits {} ", search_info.search_data.hash_hits);
+        print!("eval cp {} ", best_eval);
+        println!("pv {}", extract_pv(state, &search_info.trans_table));
+        
         // print!("cutnodes {} ", search_info.search_data.cut_nodes);
         // print!("visited {} ", search_info.search_data.nodes_visited);
-        println!("cutratio {:.2} ", (search_info.search_data.cut_nodes as f64 / search_info.search_data.nodes_visited as f64) * 100.0_f64);
-        */
-
+        
         search_info.search_data.hash_hits = 0;
         search_info.search_data.cut_nodes = 0;
         search_info.search_data.nodes_visited = 0;
@@ -96,45 +98,57 @@ pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration) -> (
         if depth == MAX_SEARCH_DEPTH {
             break;
         }
+        if best_eval.abs() >= INFINITY {
+            break;
+        }
     }
+    println!("bestmove {}", best_move.to_algebraic());
     (best_move, best_eval)
 }
 
-pub fn pick_best_move_timed(state: &mut GameState, begin: Instant, max_time: Duration, depth: u8, search_info: &mut SearchInfo) -> (Move, Eval) {
+pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut SearchInfo) -> (Move, Eval) {
     let mut best_move = Move::new_from_to(0, 0, 0);
     let mut best_val = -INFINITY;
+
     let mut orderd_moves = state.generate_legal_moves();
     orderd_moves.value_moves(search_info, depth);
+    
     for move_index in 0..orderd_moves.length {
         orderd_moves.highest_next_to_index(move_index);
+        
         let r#move = orderd_moves.moves[move_index as usize];
         if !state.apply_pseudo_legal_move(r#move) {
             continue;
         }
-        let value_candidate = -alpha_beta_timed(state, -INFINITY, INFINITY, depth, search_info, true);
+        let value_candidate = -alpha_beta_timed(state, -INFINITY, INFINITY, depth - 1, search_info, true);
         state.undo_move();
+        
         if search_info.time_over() {
             return (best_move, best_val);
         }
-        if value_candidate > best_val {
+        
+        if value_candidate >= best_val {
             best_val = value_candidate;
             best_move = r#move;
+            search_info.trans_table.insert(state.zobrist, best_val, crate::tt::TTEntryFlag::Exact, depth, best_move);
         }
         
     }
+
     (best_move, best_val)
 }
 
 pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo, do_null: bool) -> Eval {
-    search_info.search_data.nodes_visited += 1;
+    if depth == 0 {
+        return quiescent_search_timed(state, alpha, beta, MAX_QUIESCENCE, search_info);
+    }
+    
     if search_info.time_over() {
         return alpha;
     }
-    if depth == 0 {
-        return quiescent_search_fixed(state, alpha, beta, MAX_QUIESCENCE, search_info);
-    }
-    
-    
+
+    search_info.search_data.nodes_visited += 1;
+
     if state.has_repitition() || state.fifty_move_rule >= 100 {
         return 0;
     }
@@ -249,7 +263,10 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
     alpha
 }
 
-pub fn quiescent_search_fixed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo) -> Eval {
+pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo) -> Eval {
+    if search_info.time_over() {
+        return alpha;
+    }
     search_info.search_data.nodes_visited += 1;
     if state.has_repitition() || state.fifty_move_rule >= 100 {
         return 0;
@@ -276,7 +293,7 @@ pub fn quiescent_search_fixed(state: &mut GameState, alpha: Eval, beta: Eval, de
         if !state.apply_pseudo_legal_move(r#move) {
             continue;
         }
-        let score = -quiescent_search_fixed(state, -beta, -alpha, depth - 1, search_info);
+        let score = -quiescent_search_timed(state, -beta, -alpha, depth - 1, search_info);
         state.undo_move();
 
         if score >= beta {
@@ -318,6 +335,7 @@ impl MoveList {
             if r#move.is_capture() {
                 self.values[move_index as usize] += MVV_LVA_VALUE + MVV_LVA[r#move.captured_piece()][r#move.moving_piece()];
             } else if search_info.killer_table.is_killer(depth, r#move) {
+                // TODO: Test if move is playable
                 self.values[move_index as usize] += KILLER_VALUE;
             }
         }

@@ -1,5 +1,5 @@
 use crate::bitboard::Square;
-use crate::gamestate::{Piece, PAWN, KING};
+use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES};
 use crate::search::Eval;
 use std::ops::BitOr;
 
@@ -51,6 +51,8 @@ pub enum CastlingSide {
     QueenSide,
     KingSide,
 }
+
+static PIECE_CHAR: [char; NUM_OF_PIECES] = ['p', 'r', 'n', 'b', 'q', 'k'];
 
 impl Move {
     #[inline(always)]
@@ -159,7 +161,11 @@ impl Move {
 
     #[inline(always)]
     pub fn to_algebraic(self) -> String {
-        format!("{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()))
+        if self.is_promotion() {
+            format!("{}{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()), PIECE_CHAR[self.promoted_piece()]) 
+        } else {
+            format!("{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()))
+        }
     }
 }
 

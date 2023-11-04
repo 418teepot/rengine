@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::env;
 
 use gamestate::GameState;
 use movegen::RAY_FROM_TO;
-use crate::search::{eval_into_white_viewpoint, iterative_deepening_timed};
+use crate::search::{eval_into_white_viewpoint, iterative_deepening_timed, SearchData, SearchInfo, pick_best_move_timed};
+use crate::uci::extract_pv;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
 
 #[macro_use]
@@ -32,11 +33,16 @@ fn main() {
     println!("Initializing lookup tables...");
     initialize_lazy();
     println!("Done!");
-    // let mut gs = GameState::new_from_fen("r1bqkb1r/pppp1ppp/2n2n2/8/3pP3/2N2N2/PPP2PPP/R1BQKB1R w KQkq - 0 5");
+    
     let mut gs = GameState::new_starting_pos();
+    let mut search_info = SearchInfo::new(Instant::now(), Duration::from_secs(30));
     loop {
-    let (best_move, best_eval) = iterative_deepening_timed(&mut gs, Duration::from_secs(30));
-    println!("{}, {}", best_move.to_algebraic(), eval_into_white_viewpoint(best_eval, gs.side_to_move()));
-    gs.apply_legal_move(best_move);
+        if gs.game_is_over() {
+            break;
+        }
+        let (best_move, best_eval) = iterative_deepening_timed(&mut gs, Duration::from_secs(120), &mut search_info);
+        gs.apply_legal_move(best_move);
     }
+    
+    
 }
