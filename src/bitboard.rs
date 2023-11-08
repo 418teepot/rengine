@@ -1,4 +1,4 @@
-use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd, Not, Shl, Shr, BitXor};
+use std::ops::{BitOrAssign, BitOr, BitXorAssign, BitAnd, Not, Shl, Shr, BitXor, BitAndAssign};
 
 #[derive(PartialEq, Default, Copy, Clone, Debug)]
 pub struct Bitboard(pub u64);
@@ -98,6 +98,13 @@ impl BitXorAssign for Bitboard {
     #[inline(always)]
     fn bitxor_assign(&mut self, rhs: Self) {
         self.0 = self.0 ^ rhs.0;
+    }
+}
+
+impl BitAndAssign for Bitboard {
+    #[inline(always)]
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.0 = self.0 & rhs.0;
     }
 }
 

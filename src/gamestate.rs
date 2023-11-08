@@ -3,6 +3,7 @@ use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CH
 use crate::search::Eval;
 use crate::bitboard::{Bitboard, Square};
 use crate::r#move::{Move, CastlingSide, self};
+use crate::uci::algebraic_to_index;
 use crate::zobrist::ZobristHash;
 
 // TODO: Maybe smaller sizes?
@@ -120,7 +121,7 @@ impl GameState {
         state.fifty_move_rule = fifty_move_clock.parse().expect("50 move rule clock is not a valid number in fen string.");
         state.en_passant_board = match en_passant_square {
             "-" => Bitboard::empty(),
-            _ => Bitboard::square(en_passant_square.parse().expect("Not a valid en_passant square in fen string")),
+            _ => Bitboard::square(algebraic_to_index(en_passant_square).unwrap()),
         };
         state.zobrist.init_en_passant_square(state.en_passant_board);
 
@@ -143,6 +144,7 @@ impl GameState {
     }
 
     pub fn apply_legal_move(&mut self, r#move: Move) {
+        assert!(r#move != Move::new_from_to(0, 0, 0));
         self.history.push(History { r#move, en_passant: self.en_passant_board, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();
@@ -253,9 +255,13 @@ impl GameState {
 
     }
 
-    pub fn null_move(&mut self) {
+    pub fn make_null_move(&mut self) {
         self.history.push(History { r#move: Move::new_from_to(0, 0, 0), fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist, en_passant: self.en_passant_board });
         self.plys += 1;
+        if self.en_passant_board != Bitboard(0) {
+            self.zobrist.remove_en_passant_square(self.en_passant_board.next_piece_index());
+            self.en_passant_board = Bitboard(0);
+        }
         self.zobrist.flip_side_to_move();
     }
 
@@ -314,6 +320,7 @@ impl GameState {
         self.plys -= 1;
 
         let r#move = past.r#move;
+        assert!(r#move != Move::new_from_to(0, 0, 0));
         let to = r#move.to();
         let from = r#move.from();
         let our_side = self.side_to_move();

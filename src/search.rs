@@ -1,7 +1,8 @@
 use std::cmp::{max, min};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, KING};
+use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, KING, self};
 use crate::r#move::{Move, MoveList};
 use crate::tt::TranspositionTable;
 use crate::uci::extract_pv;
@@ -17,7 +18,9 @@ pub const IS_MATE: Eval = INFINITY - MAX_GAME_DEPTH;
 const MAX_SEARCH_DEPTH: u8 = 30;
 const MAX_KILLER_MOVES: usize = 2;
 
-const TRANS_TABLE_SIZE: usize = 100_000;
+const R: u8 = 3;
+
+const TRANS_TABLE_SIZE: usize = 10_000_000;
 
 pub struct SearchInfo {
     pub killer_table: KillerTable,
@@ -31,13 +34,13 @@ pub struct SearchInfo {
 pub struct KillerTable([[Move; MAX_KILLER_MOVES]; MAX_SEARCH_DEPTH as usize]);
 
 impl SearchInfo {
-    pub fn new(begin: Instant, max_time: Duration) -> Self {
+    pub fn new(begin: Instant) -> Self {
         SearchInfo {
             killer_table: KillerTable::default(),
             trans_table: TranspositionTable::new(TRANS_TABLE_SIZE),
             search_data: SearchData::default(),
             begin,
-            max_time
+            max_time: Duration::from_secs(0),
         }
     }
 
@@ -69,7 +72,7 @@ pub struct SearchData {
     pub nodes_visited: u32,
 }
 
-pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration, search_info: &mut SearchInfo) -> (Move, Eval) {
+pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> (Move, Eval) {
     search_info.max_time = max_time;
     search_info.begin = Instant::now();
 
@@ -77,15 +80,21 @@ pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration, sear
     let mut best_eval = -INFINITY;
     let mut depth = 1;
     loop {
-        let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info);
-        if search_info.time_over() {
+        let iteration_start = Instant::now();
+        let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info, &stop_flag);
+        if search_info.time_over() || *stop_flag.lock().unwrap() {
             search_info.trans_table.insert(state.zobrist, candidate_eval, crate::tt::TTEntryFlag::Alpha, depth, candidate_move);
             break;
         }
         (best_move, best_eval) = (candidate_move, candidate_eval);
 
+        let iteration_seconds = iteration_start.elapsed().as_secs_f64();
+        let nps = (search_info.search_data.nodes_visited as f64 / iteration_seconds) as u64;
+
         print!("info depth {depth} ");
         print!("eval cp {} ", best_eval);
+        print!("nodes {} ", search_info.search_data.nodes_visited);
+        print!("nps {} ", nps);
         println!("pv {}", extract_pv(state, &search_info.trans_table));
         
         // print!("cutnodes {} ", search_info.search_data.cut_nodes);
@@ -102,11 +111,14 @@ pub fn iterative_deepening_timed(state: &mut GameState, max_time: Duration, sear
             break;
         }
     }
+    search_info.search_data.hash_hits = 0;
+    search_info.search_data.cut_nodes = 0;
+    search_info.search_data.nodes_visited = 0;
     println!("bestmove {}", best_move.to_algebraic());
     (best_move, best_eval)
 }
 
-pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut SearchInfo) -> (Move, Eval) {
+pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> (Move, Eval) {
     let mut best_move = Move::new_from_to(0, 0, 0);
     let mut best_val = -INFINITY;
 
@@ -120,10 +132,10 @@ pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut 
         if !state.apply_pseudo_legal_move(r#move) {
             continue;
         }
-        let value_candidate = -alpha_beta_timed(state, -INFINITY, INFINITY, depth - 1, search_info, true);
+        let value_candidate = -alpha_beta_timed(state, -INFINITY, INFINITY, depth - 1, search_info, true, stop_flag);
         state.undo_move();
         
-        if search_info.time_over() {
+        if search_info.time_over() || *stop_flag.lock().unwrap() {
             return (best_move, best_val);
         }
         
@@ -138,12 +150,12 @@ pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut 
     (best_move, best_val)
 }
 
-pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo, do_null: bool) -> Eval {
+pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo, do_null: bool, stop_flag: &Arc<Mutex<bool>>) -> Eval {
     if depth == 0 {
-        return quiescent_search_timed(state, alpha, beta, MAX_QUIESCENCE, search_info);
+        return quiescent_search_timed(state, alpha, beta, MAX_QUIESCENCE, search_info, stop_flag);
     }
     
-    if search_info.time_over() {
+    if search_info.time_over() || *stop_flag.lock().unwrap() {
         return alpha;
     }
 
@@ -187,6 +199,17 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
         }
     }
     
+    // Null-Move heuristic
+    if do_null && depth >= R && !in_check && state.phase() <= 220 {
+        state.make_null_move();
+        let null_move_value = -alpha_beta_timed(state, -beta, -beta + 1, depth - R, search_info, false, stop_flag);
+        state.undo_null_move();
+        if null_move_value >= beta && null_move_value.abs() < INFINITY {
+            search_info.search_data.cut_nodes += 1;
+            return beta;
+        }
+    }
+
     let mut legals = 0;
 
     let mut moves = state.generate_pseudo_legal_moves();
@@ -211,17 +234,7 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             continue;
         }
         legals += 1;
-        value = -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, do_null);
-        /* 
-        if r#move == pvmove {
-            value = -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, do_null);
-        } else {
-            value = -alpha_beta_timed(state, -alpha - 1, -alpha, depth - 1, search_info, do_null);
-            if alpha < value && value < beta {
-                value = -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, do_null)
-            }
-        };
-        */
+        value = -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, true, stop_flag);
         state.undo_move();
         if value > best_value {
             best_value = value;
@@ -263,8 +276,8 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
     alpha
 }
 
-pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo) -> Eval {
-    if search_info.time_over() {
+pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> Eval {
+    if search_info.time_over() || *stop_flag.lock().unwrap() {
         return alpha;
     }
     search_info.search_data.nodes_visited += 1;
@@ -293,7 +306,7 @@ pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, de
         if !state.apply_pseudo_legal_move(r#move) {
             continue;
         }
-        let score = -quiescent_search_timed(state, -beta, -alpha, depth - 1, search_info);
+        let score = -quiescent_search_timed(state, -beta, -alpha, depth - 1, search_info, stop_flag);
         state.undo_move();
 
         if score >= beta {

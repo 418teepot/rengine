@@ -1,6 +1,7 @@
 use crate::bitboard::Square;
-use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES};
+use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES, GameState, WHITE, self, QUEEN, ROOK, KNIGHT, BISHOP, G1, E1, C1, E8, G8, C8};
 use crate::search::Eval;
+use crate::uci::algebraic_to_index;
 use std::ops::BitOr;
 
 pub const MAX_MOVES: usize = 200;
@@ -165,6 +166,54 @@ impl Move {
             format!("{}{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()), PIECE_CHAR[self.promoted_piece()]) 
         } else {
             format!("{}{}", Self::square_to_algebraic(self.from()), Self::square_to_algebraic(self.to()))
+        }
+    }
+
+    pub fn from_text_move(gamestate: &GameState, r#move: &str) -> Self {
+        let from = algebraic_to_index(&r#move[0..2]).unwrap();
+        let piece_from = gamestate.find_piece_on_all(from).unwrap().1;
+        let to = algebraic_to_index(&r#move[2..4]).unwrap();
+        let piece_to = gamestate.find_piece_on_all(to);
+        if r#move.len() == 5 {
+            let promoted_to_char = r#move.chars().nth(4).unwrap();
+            let promoted_piece = match promoted_to_char {
+                'q' => QUEEN,
+                'r' => ROOK,
+                'n' => KNIGHT,
+                'b' => BISHOP,
+                _ => unreachable!(),
+            };
+            if let Some((_, captured_piece)) = piece_to {
+                return Move::new_capture_promotion(from, to, promoted_piece, captured_piece)
+            } else {
+                return Move::new_quiet_promotion(from, to, piece_from)
+            }
+        }
+        if piece_from == PAWN && to == gamestate.en_passant_board.next_piece_index() {
+            return Move::new_en_passant_capture(from, to)
+        }
+        if piece_from == KING {
+            if gamestate.side_to_move() == WHITE {
+                if from == E1 {
+                    if to == G1 {
+                        return Move::new_castle(crate::r#move::CastlingSide::KingSide, from, to)
+                        
+                    } else if to == C1 {
+                        return Move::new_castle(crate::r#move::CastlingSide::QueenSide, from, to)
+                    }
+                } 
+            } else if from == E8 {
+                if to == G8 {
+                    return Move::new_castle(crate::r#move::CastlingSide::KingSide, from, to)
+                } else if to == C8 {
+                    return Move::new_castle(crate::r#move::CastlingSide::QueenSide, from, to)
+                }
+            }    
+        }
+        if let Some((_, captured_piece)) = piece_to {
+            return Move::new_capture(from, to, piece_from, captured_piece)
+        } else {
+            return Move::new_from_to(from, to, piece_from)
         }
     }
 }

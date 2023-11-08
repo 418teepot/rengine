@@ -2,7 +2,7 @@ use std::cmp::min;
 
 use crate::bitboard::Bitboard;
 use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT, Piece};
-use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK};
+use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK};
 use crate::r#move;
 use crate::search::Eval;
 
@@ -411,17 +411,18 @@ impl GameState {
         let enemy_side = side ^ 1;
         let pinned_hv = self.get_hv_pinmask(king_square, blockers, enemy_side);
         let pinned_d12 = self.get_diagonal_pinmask(king_square, blockers, enemy_side);
+        let mobility_area = self.mobility_area(side);
         for from_sq in self.piece_boards[side][ROOK] & !pinned_d12 {
-            eval += MG_ROOK_MOBILITY_BONUS[rook_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += MG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][BISHOP] & !pinned_hv {
-            eval += MG_BISHOP_MOBILITY_BONUS[bishop_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += MG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][KNIGHT] & !(pinned_hv | pinned_d12) {
-            eval += MG_KNIGHT_MOBILITY_BONUS[KNIGHT_MOVES[from_sq].0.count_ones() as usize];
+            eval += MG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][QUEEN] & !(pinned_d12 | pinned_hv) {
-            eval += MG_QUEEN_MOBILITY_BONUS[queen_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += MG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
         eval
     }
@@ -433,17 +434,18 @@ impl GameState {
         let enemy_side = side ^ 1;
         let pinned_hv = self.get_hv_pinmask(king_square, blockers, enemy_side);
         let pinned_d12 = self.get_diagonal_pinmask(king_square, blockers, enemy_side);
+        let mobility_area = self.mobility_area(side);
         for from_sq in self.piece_boards[side][ROOK] & !pinned_d12 {
-            eval += EG_ROOK_MOBILITY_BONUS[rook_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += EG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][BISHOP] & !pinned_hv {
-            eval += EG_BISHOP_MOBILITY_BONUS[bishop_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += EG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][KNIGHT] & !(pinned_hv | pinned_d12) {
-            eval += EG_KNIGHT_MOBILITY_BONUS[KNIGHT_MOVES[from_sq].0.count_ones() as usize];
+            eval += EG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & !mobility_area).0.count_ones() as usize];
         }
         for from_sq in self.piece_boards[side][QUEEN] & !(pinned_d12 | pinned_hv) {
-            eval += EG_QUEEN_MOBILITY_BONUS[queen_move_bitboard(from_sq, blockers).0.count_ones() as usize];
+            eval += EG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
         }
 
         eval
@@ -479,5 +481,48 @@ impl GameState {
             }
         }
         true
+    }
+
+    pub fn calculate_movetime(&self, wtime: u64, btime: u64) -> u64 {
+        /* 
+        f(x) = ax + b
+        f(0) = 40
+        40 = a * 0 + b
+        b = 40
+        f(256) = 5
+        5 = a * 256 + 40 | -40
+        -35 = a * 256    | / 256
+        -35/256 = a
+        */
+        (if self.side_to_move() == WHITE {
+            wtime
+        } else {
+            btime
+        }) / self.moves_left() as u64
+    }
+
+    fn moves_left(&self) -> u16 {
+        ((self.phase() as f64) * (-35.0_f64 / 256.0_f64) + 40.0_f64) as u16
+    }
+
+    fn mobility_area(&self, side: Side) -> Bitboard {
+        let mut area = Bitboard::full();
+        let enemy_side = side ^ 1;
+        area &= !(if side == WHITE {
+            ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) >> 7)
+            | ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) >> 9)
+        } else {
+            ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) << 7)
+            | ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) << 9)
+        });
+        area &= !(self.piece_boards[side][PAWN] & 
+            (if side == WHITE {
+                RANK_BITMASK[1] | RANK_BITMASK[2]
+            } else {
+                RANK_BITMASK[6] | RANK_BITMASK[5]
+            })
+        );
+
+        area
     }
 }
