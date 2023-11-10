@@ -1,8 +1,8 @@
-use std::cmp::min;
+use std::cmp::{min, max};
 
-use crate::bitboard::Bitboard;
+use crate::bitboard::{Bitboard, Square, NUM_OF_SQUARES};
 use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT, Piece};
-use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK};
+use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK, king_move_bitboard, knight_move_bitboard};
 use crate::r#move;
 use crate::search::Eval;
 
@@ -176,11 +176,11 @@ pub static PSQT_EG: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS] =
         [
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
-            5, 10,10,10,10,10,10,5,
-            10,20,20,20,20,20,20,10,
-            15,30,30,30,30,30,30,15,
-            20,40,40,40,40,40,40,20,
-            50,60,60,60,60,60,60,50,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
         ],
         [
@@ -237,11 +237,11 @@ pub static PSQT_EG: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS] =
     [
         [
             0, 0, 0, 0, 0, 0, 0, 0,
-            50,60,60,60,60,60,60,50,
-            20,40,40,40,40,40,40,20,
-            15,30,30,30,30,30,30,15,
-            10,20,20,20,20,20,20,10,
-            5, 10,10,10,10,10,10,5,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
         ],
@@ -298,6 +298,8 @@ pub static PSQT_EG: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS] =
     ], // Black
 ];
 
+static attack_weight: [Eval; 7] = [0, 50, 75, 88, 94, 97, 99];
+
 lazy_static! {
     static ref ISOLATED_MASKS: [Bitboard; 8] = {
         let mut boards = [Bitboard(0); 8];
@@ -307,6 +309,25 @@ lazy_static! {
             boards[file] = FILE_BITMASK[file + 1] | FILE_BITMASK[file - 1];
         }
         boards
+    };
+
+    static ref PASSED_MASK: [[Bitboard; NUM_OF_SQUARES]; NUM_OF_PLAYERS] = {
+        let mut masks = [[Bitboard(0); 64]; 2];
+        // White
+        for square in 8..56 {
+            let file: isize = square as isize % 8;
+            let file_mask = FILE_BITMASK[file as usize];
+            let file_mask_left = FILE_BITMASK[max(0, file - 1) as usize];
+            let file_mask_right = FILE_BITMASK[min(7, file + 1) as usize];
+            let triple_file_mask = file_mask | file_mask_left | file_mask_right;
+            let rank = square / 8;
+            let forward_mask_white = Bitboard::full() << (8 * (rank + 1));
+            let forward_mask_black = Bitboard::full() >> (8 * (rank - 1));
+            masks[WHITE][square] = forward_mask_white & triple_file_mask;
+            masks[BLACK][square] = forward_mask_black & triple_file_mask;
+        }
+
+        masks
     };
 }
 
@@ -332,8 +353,8 @@ impl GameState {
     pub fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
         (self.material[our_side] - self.material[enemy_side]) 
         + (self.psqt_mg[our_side] - self.psqt_mg[enemy_side]) 
-        + self.king_safety_mg(our_side)
-        // + (self.mobility_mg(our_side) - self.mobility_mg(enemy_side))
+        + self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side)
+        + (self.mobility_mg(our_side) - self.mobility_mg(enemy_side))
         + self.pieces_mg(our_side) - self.pieces_mg(enemy_side)
         + self.pawns_mg(our_side) - self.pawns_mg(enemy_side)
         + TEMPO_VALUE
@@ -346,36 +367,60 @@ impl GameState {
     fn pawns_mg(&self, our_side: Side) -> Eval {
         let mut eval = 0;
         for pawn in self.piece_boards[our_side][PAWN] {
-            let file = pawn % 8;
-            if (self.piece_boards[our_side][PAWN] & FILE_BITMASK[file]).0.count_ones() > 1 {
+            if self.is_doubled(our_side, pawn) {
                 eval -= 10;
             }
-            if (self.piece_boards[our_side][PAWN] & ISOLATED_MASKS[file]).is_empty() {
+            if self.is_isolated(our_side, pawn) {
                 eval -= 6;
+            }
+            if self.is_passed(our_side, pawn) {
+                eval += [0, 10, 20, 30, 60, 160, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
         }
         eval
     }
 
+    fn ranked_passed_pawn(side: Side, square: Square) -> usize {
+        if side == WHITE {
+            square / 8
+        } else {
+            8 - (square / 8)
+        }
+    }
+
     fn pawns_eg(&self, our_side: Side) -> Eval {
         let mut eval = 0;
         for pawn in self.piece_boards[our_side][PAWN] {
-            let file = pawn % 8;
-            if (self.piece_boards[our_side][PAWN] & FILE_BITMASK[file]).0.count_ones() > 1 {
+            if self.is_doubled(our_side, pawn) {
                 eval -= 30;
             }
-            if (self.piece_boards[our_side][PAWN] & ISOLATED_MASKS[file]).is_empty() {
+            if self.is_isolated(our_side, pawn) {
                 eval -= 15;
+            }
+            if self.is_passed(our_side, pawn) {
+                eval += [0, 30, 35, 45, 70, 150, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
         }
         eval
+    }
+
+    fn is_isolated(&self, our_side: Side, square: Square) -> bool {
+        (self.piece_boards[our_side][PAWN] & ISOLATED_MASKS[square % 8]).is_empty()
+    }
+
+    fn is_doubled(&self, our_side: Side, square: Square) -> bool {
+        (self.piece_boards[our_side][PAWN] & FILE_BITMASK[square % 8]).0.count_ones() > 1
+    }
+
+    fn is_passed(&self, our_side: Side, square: Square) -> bool {
+        (self.piece_boards[our_side ^ 1][PAWN] & PASSED_MASK[our_side][square]).is_empty()
     }
 
     pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
         (self.material[our_side] - self.material[enemy_side]) 
         + (self.psqt_eg[our_side] - self.psqt_eg[enemy_side])
         + self.pieces_eg(our_side) - self.pieces_eg(enemy_side)
-        // + self.mobility_eg(our_side) - self.mobility_eg(enemy_side) 
+        + self.mobility_eg(our_side) - self.mobility_eg(enemy_side) 
         + self.pawns_eg(our_side) - self.pawns_eg(enemy_side)
         + TEMPO_VALUE
     }
@@ -385,11 +430,59 @@ impl GameState {
     }
 
     fn king_safety_mg(&self, our_side: Side) -> Eval {
+        let mut eval = 0;
         if !self.has_castled[our_side] {
-            NOT_CASTLED_PENALTY
+            eval += NOT_CASTLED_PENALTY
         } else {
-            (3 - min(3, (KING_MOVES[self.piece_boards[our_side][KING].next_piece_index()] & self.piece_boards[our_side][PAWN]).0.count_ones() as Eval)) * MISSING_PAWN_SHIELD_PENALTY
+            eval += (3 - min(3, (KING_MOVES[self.piece_boards[our_side][KING].next_piece_index()] & self.piece_boards[our_side][PAWN]).0.count_ones() as Eval)) * MISSING_PAWN_SHIELD_PENALTY
         }
+        /* 
+        let king_square = self.piece_boards[our_side][KING].next_piece_index();
+        let king_moves = king_move_bitboard(king_square);
+        let king_attack_zone = if our_side == WHITE {
+            king_moves | king_moves << 8 | king_moves << 16
+        } else {
+            king_moves | king_moves >> 8 | king_moves >> 16
+        };
+        let mut value_of_attacks: i32 = 0;
+        let mut attacking_piece_count = 0;
+        let enemy_side = our_side ^ 1;
+        for square in self.piece_boards[enemy_side][KNIGHT] {
+            let moves = knight_move_bitboard(square);
+            let attacks_on_zone = king_attack_zone & moves;
+            if attacks_on_zone.is_filled() {
+                attacking_piece_count += 1;
+                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 20;
+            }
+        }
+        let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
+        for square in self.piece_boards[enemy_side][BISHOP] {
+            let moves = bishop_move_bitboard(square, blockers);
+            let attacks_on_zone = king_attack_zone & moves;
+            if attacks_on_zone.is_filled() {
+                attacking_piece_count += 1;
+                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 20;
+            }
+        }
+        for square in self.piece_boards[enemy_side][ROOK] {
+            let moves = rook_move_bitboard(square, blockers);
+            let attacks_on_zone = king_attack_zone & moves;
+            if attacks_on_zone.is_filled() {
+                attacking_piece_count += 1;
+                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 40;
+            }
+        }
+        for square in self.piece_boards[enemy_side][QUEEN] {
+            let moves = queen_move_bitboard(square, blockers);
+            let attacks_on_zone = king_attack_zone & moves;
+            if attacks_on_zone.is_filled() {
+                attacking_piece_count += 1;
+                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 80;
+            }
+        }
+        eval -= value_of_attacks * attack_weight[attacking_piece_count] / 100;
+        */
+        eval
     }
 
     fn rook_on_open_file(&self, our_side: Side) -> u8 {
@@ -407,22 +500,18 @@ impl GameState {
     fn mobility_mg(&self, side: Side) -> Eval {
         let mut eval = 0;
         let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
-        let king_square = self.piece_boards[side][KING].next_piece_index();
-        let enemy_side = side ^ 1;
-        let pinned_hv = self.get_hv_pinmask(king_square, blockers, enemy_side);
-        let pinned_d12 = self.get_diagonal_pinmask(king_square, blockers, enemy_side);
         let mobility_area = self.mobility_area(side);
-        for from_sq in self.piece_boards[side][ROOK] & !pinned_d12 {
-            eval += MG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][ROOK] {
+            eval += MG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][BISHOP] & !pinned_hv {
-            eval += MG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][BISHOP] {
+            eval += MG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][KNIGHT] & !(pinned_hv | pinned_d12) {
-            eval += MG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][KNIGHT] {
+            eval += MG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][QUEEN] & !(pinned_d12 | pinned_hv) {
-            eval += MG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][QUEEN] {
+            eval += MG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
         eval
     }
@@ -430,22 +519,18 @@ impl GameState {
     pub fn mobility_eg(&self, side: Side) -> Eval {
         let mut eval = 0;
         let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
-        let king_square = self.piece_boards[side][KING].next_piece_index();
-        let enemy_side = side ^ 1;
-        let pinned_hv = self.get_hv_pinmask(king_square, blockers, enemy_side);
-        let pinned_d12 = self.get_diagonal_pinmask(king_square, blockers, enemy_side);
         let mobility_area = self.mobility_area(side);
-        for from_sq in self.piece_boards[side][ROOK] & !pinned_d12 {
-            eval += EG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][ROOK] {
+            eval += EG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][BISHOP] & !pinned_hv {
-            eval += EG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][BISHOP] {
+            eval += EG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][KNIGHT] & !(pinned_hv | pinned_d12) {
-            eval += EG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][KNIGHT] {
+            eval += EG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & mobility_area).0.count_ones() as usize];
         }
-        for from_sq in self.piece_boards[side][QUEEN] & !(pinned_d12 | pinned_hv) {
-            eval += EG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & !mobility_area).0.count_ones() as usize];
+        for from_sq in self.piece_boards[side][QUEEN] {
+            eval += EG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
         }
 
         eval

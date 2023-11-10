@@ -18,7 +18,7 @@ pub const IS_MATE: Eval = INFINITY - MAX_GAME_DEPTH;
 const MAX_SEARCH_DEPTH: u8 = 30;
 const MAX_KILLER_MOVES: usize = 2;
 
-const R: u8 = 3;
+const R: u8 = 4;
 
 const TRANS_TABLE_SIZE: usize = 10_000_000;
 
@@ -92,7 +92,7 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
         let nps = (search_info.search_data.nodes_visited as f64 / iteration_seconds) as u64;
 
         print!("info depth {depth} ");
-        print!("eval cp {} ", best_eval);
+        print!("score cp {} ", best_eval);
         print!("nodes {} ", search_info.search_data.nodes_visited);
         print!("nps {} ", nps);
         println!("pv {}", extract_pv(state, &search_info.trans_table));
@@ -198,17 +198,20 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             }
         }
     }
-    
+    /*
     // Null-Move heuristic
-    if do_null && depth >= R && !in_check && state.phase() <= 220 {
+    if do_null && depth >= 4 && !in_check && state.phase() <= 220 && state.plys != 0 {
         state.make_null_move();
-        let null_move_value = -alpha_beta_timed(state, -beta, -beta + 1, depth - R, search_info, false, stop_flag);
+        let null_move_value = -alpha_beta_timed(state, -beta, -beta + 1, depth - 4, search_info, false, stop_flag);
         state.undo_null_move();
         if null_move_value >= beta && null_move_value.abs() < INFINITY {
             search_info.search_data.cut_nodes += 1;
             return beta;
         }
     }
+    */
+    
+    
 
     let mut legals = 0;
 
