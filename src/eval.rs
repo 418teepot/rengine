@@ -1,9 +1,8 @@
 use std::cmp::{min, max};
 
 use crate::bitboard::{Bitboard, Square, NUM_OF_SQUARES};
-use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT, Piece};
-use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK, king_move_bitboard, knight_move_bitboard};
-use crate::r#move;
+use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT};
+use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK};
 use crate::search::Eval;
 
 const PAWN_VALUE: Eval = 100;
@@ -298,7 +297,7 @@ pub static PSQT_EG: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS] =
     ], // Black
 ];
 
-static attack_weight: [Eval; 7] = [0, 50, 75, 88, 94, 97, 99];
+// static attack_weight: [Eval; 7] = [0, 50, 75, 88, 94, 97, 99];
 
 lazy_static! {
     static ref ISOLATED_MASKS: [Bitboard; 8] = {
@@ -376,6 +375,10 @@ impl GameState {
             if self.is_passed(our_side, pawn) {
                 eval += [0, 10, 20, 30, 60, 160, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
+            let is_connected = self.is_connected(our_side, pawn);
+            if is_connected > 0 {
+                eval += is_connected as Eval * 20;
+            }
         }
         eval
     }
@@ -400,6 +403,10 @@ impl GameState {
             if self.is_passed(our_side, pawn) {
                 eval += [0, 30, 35, 45, 70, 150, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
+            let is_connected = self.is_connected(our_side, pawn);
+            if is_connected > 0 {
+                eval += is_connected as Eval * 20;
+            }
         }
         eval
     }
@@ -414,6 +421,18 @@ impl GameState {
 
     fn is_passed(&self, our_side: Side, square: Square) -> bool {
         (self.piece_boards[our_side ^ 1][PAWN] & PASSED_MASK[our_side][square]).is_empty()
+    }
+
+    fn is_connected(&self, our_side: Side, square: Square) -> u8 {
+        let pawn_board = Bitboard::square(square);
+        let attacks = if our_side == WHITE {
+            ((pawn_board &!FILE_BITMASK[0]) >> 7) 
+            | ((pawn_board &!FILE_BITMASK[7]) >> 9) 
+        } else {
+            ((pawn_board &!FILE_BITMASK[0]) << 7)
+            | ((pawn_board &!FILE_BITMASK[7]) << 9)
+        };
+        (self.piece_boards[our_side][PAWN] & attacks).0.count_ones() as u8
     }
 
     pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
@@ -488,10 +507,9 @@ impl GameState {
     fn rook_on_open_file(&self, our_side: Side) -> u8 {
         let mut rooks = 0;
         for file in 0..8 {
-            if (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_empty() {
-                if (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_filled() {
+            if (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_empty()
+                && (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_filled() {
                     rooks += 1;
-                }
             }
         }
         std::cmp::max(2, rooks)
@@ -536,10 +554,6 @@ impl GameState {
         eval
     }
 
-    fn tempo_value_mg(&self) -> Eval {
-        TEMPO_VALUE
-    }
-
     pub fn has_repitition(&self) -> bool {
         let mut index = 2;
         loop {
@@ -555,17 +569,6 @@ impl GameState {
             }            
             index += 1;
         }
-    }
-
-    pub fn game_is_over(&mut self) -> bool {
-        let moves = self.generate_pseudo_legal_moves();
-        for r#move in moves {
-            if self.apply_pseudo_legal_move(r#move) {
-                self.undo_move();
-                return false;
-            }
-        }
-        true
     }
 
     pub fn calculate_movetime(&self, wtime: u64, btime: u64) -> u64 {

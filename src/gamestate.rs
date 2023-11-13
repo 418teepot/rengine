@@ -1,5 +1,5 @@
 use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG};
-use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE, RAY_FROM_TO};
+use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE};
 use crate::search::Eval;
 use crate::bitboard::{Bitboard, Square};
 use crate::r#move::{Move, CastlingSide, self};
@@ -504,6 +504,7 @@ impl GameState {
         self.plys & 1
     }
 
+    #[allow(dead_code)]
     pub fn print_debug(&self) {
         let mut rank: isize = 7;
         let mut file: isize = 0;
@@ -571,7 +572,6 @@ pub struct History {
 
 #[cfg(test)]
 mod tests {
-    use crate::gamestate::{WHITE, PAWN};
 
     use super::GameState;
 

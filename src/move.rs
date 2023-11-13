@@ -1,5 +1,5 @@
 use crate::bitboard::Square;
-use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES, GameState, WHITE, self, QUEEN, ROOK, KNIGHT, BISHOP, G1, E1, C1, E8, G8, C8};
+use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES, GameState, WHITE, QUEEN, ROOK, KNIGHT, BISHOP, G1, E1, C1, E8, G8, C8};
 use crate::search::Eval;
 use crate::uci::algebraic_to_index;
 use std::ops::BitOr;
@@ -211,9 +211,9 @@ impl Move {
             }    
         }
         if let Some((_, captured_piece)) = piece_to {
-            return Move::new_capture(from, to, piece_from, captured_piece)
+            Move::new_capture(from, to, piece_from, captured_piece)
         } else {
-            return Move::new_from_to(from, to, piece_from)
+            Move::new_from_to(from, to, piece_from)
         }
     }
 }
@@ -241,19 +241,6 @@ impl MoveList {
         self.length += 1;
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.length == 0
-    }
-
-    pub fn captures(self) -> MoveList {
-        let mut moves = MoveList::new();
-        for r#move in self {
-            if r#move.is_capture() {
-                moves.add_move(r#move);
-            }
-        }
-        moves
-    }
 }
 
 pub struct MoveIterator {

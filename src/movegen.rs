@@ -1,6 +1,6 @@
 use crate::bitboard::{Bitboard, Square};
 use crate::gamestate::{GameState, KING, Side, Piece, PAWN, ROOK, KNIGHT, BISHOP, QUEEN, NUM_OF_PIECES, WHITE, WHITE_QUEENSIDE_CASTLE, WHITE_KINGSIDE_CASTLE, BLACK_QUEENSIDE_CASTLE, NUM_OF_PLAYERS, BLACK_KINGSIDE_CASTLE, E1, C1, G1, E8, C8, G8, BLACK};
-use crate::magic::{mailbox64, mailbox, BISHOP_MAGICS_AND_PLAYS, magic_index, ROOK_MAGICS_AND_PLAYS};
+use crate::magic::{MAILBOX64, MAILBOX, BISHOP_MAGICS_AND_PLAYS, magic_index, ROOK_MAGICS_AND_PLAYS};
 use crate::r#move::{MoveList, self};
 use crate::r#move::Move;
 
@@ -801,8 +801,8 @@ lazy_static! {
         for square in 0..64 {
             let mut bitmask = Bitboard(0);
             for ray in KING_RAYS {
-                if mailbox[(mailbox64[square] + ray) as usize] != -1 {
-                    bitmask |= Bitboard::square(mailbox[(mailbox64[square] + ray) as usize] as usize);
+                if MAILBOX[(MAILBOX64[square] + ray) as usize] != -1 {
+                    bitmask |= Bitboard::square(MAILBOX[(MAILBOX64[square] + ray) as usize] as usize);
                 }
             }
             king_moves[square] = bitmask;
@@ -815,8 +815,8 @@ lazy_static! {
         for square in 0..64 {
             let mut bitmask = Bitboard(0);
             for ray in KNIGHT_RAYS {
-                if mailbox[(mailbox64[square] + ray) as usize] != -1 {
-                    bitmask |= Bitboard::square(mailbox[(mailbox64[square] + ray) as usize] as usize);
+                if MAILBOX[(MAILBOX64[square] + ray) as usize] != -1 {
+                    bitmask |= Bitboard::square(MAILBOX[(MAILBOX64[square] + ray) as usize] as usize);
                 }
             }
             knight_moves[square] = bitmask;
@@ -858,7 +858,7 @@ lazy_static! {
                 let mut bitmask = 0;
                 let mut i = 0;
                 loop {
-                    let current_square = mailbox[(mailbox64[from] + ray * i) as usize];
+                    let current_square = MAILBOX[(MAILBOX64[from] + ray * i) as usize];
                     if current_square == -1 {
                         break;
                     }

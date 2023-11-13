@@ -8,6 +8,7 @@ pub type Square = usize;
 pub const NUM_OF_SQUARES: usize = 64;
 
 impl Bitboard {
+    #[allow(dead_code)]
     pub fn from_squares(squares: &[Square]) -> Self {
         let mut bitboard = Bitboard(0);
         for square in squares {
@@ -60,6 +61,7 @@ impl Bitboard {
         self.0.trailing_zeros() as Square
     }
 
+    #[allow(dead_code)]
     pub fn print(self) {
         for rank in (0..8).rev() {
             for file in 0..8 {

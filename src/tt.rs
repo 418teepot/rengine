@@ -1,5 +1,3 @@
-use std::{default, io::Empty};
-
 use crate::{zobrist::ZobristHash, search::Eval, r#move::Move};
 
 #[derive(Debug, Default, Clone)]

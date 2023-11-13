@@ -1,8 +1,7 @@
-use std::cmp::{max, min};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, KING, self};
+use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side};
 use crate::r#move::{Move, MoveList};
 use crate::tt::TranspositionTable;
 use crate::uci::extract_pv;
@@ -81,10 +80,13 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
     let mut depth = 1;
     loop {
         let iteration_start = Instant::now();
-        let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info, &stop_flag);
-        if search_info.time_over() || *stop_flag.lock().unwrap() {
-            search_info.trans_table.insert(state.zobrist, candidate_eval, crate::tt::TTEntryFlag::Alpha, depth, candidate_move);
-            break;
+        let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info, stop_flag);
+        {
+            let stop_flag_lock = stop_flag.lock().unwrap();
+            if search_info.time_over() || *stop_flag_lock {
+                search_info.trans_table.insert(state.zobrist, candidate_eval, crate::tt::TTEntryFlag::Alpha, depth, candidate_move);
+                break;
+            }
         }
         (best_move, best_eval) = (candidate_move, candidate_eval);
 
@@ -111,6 +113,10 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
             break;
         }
     }
+    {
+        let mut stop_flag_guard = stop_flag.lock().unwrap();
+        *stop_flag_guard = true;
+    }
     search_info.search_data.hash_hits = 0;
     search_info.search_data.cut_nodes = 0;
     search_info.search_data.nodes_visited = 0;
@@ -134,9 +140,11 @@ pub fn pick_best_move_timed(state: &mut GameState, depth: u8, search_info: &mut 
         }
         let value_candidate = -alpha_beta_timed(state, -INFINITY, INFINITY, depth - 1, search_info, true, stop_flag);
         state.undo_move();
-        
-        if search_info.time_over() || *stop_flag.lock().unwrap() {
-            return (best_move, best_val);
+        {
+            let stop_flag_lock = stop_flag.lock().unwrap();
+            if search_info.time_over() || *stop_flag_lock { 
+                return (best_move, best_val);
+            }
         }
         
         if value_candidate >= best_val {
@@ -154,9 +162,12 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
     if depth == 0 {
         return quiescent_search_timed(state, alpha, beta, MAX_QUIESCENCE, search_info, stop_flag);
     }
-    
-    if search_info.time_over() || *stop_flag.lock().unwrap() {
-        return alpha;
+
+    {   
+        let stop_flag_guard = stop_flag.lock().unwrap();
+        if search_info.time_over() || *stop_flag_guard {
+            return alpha;
+        }
     }
 
     search_info.search_data.nodes_visited += 1;
@@ -198,7 +209,7 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             }
         }
     }
-    /*
+    
     // Null-Move heuristic
     if do_null && depth >= 4 && !in_check && state.phase() <= 220 && state.plys != 0 {
         state.make_null_move();
@@ -209,9 +220,6 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             return beta;
         }
     }
-    */
-    
-    
 
     let mut legals = 0;
 
@@ -269,7 +277,6 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
         }
     }
 
-
     if alpha != original_alpha {
         search_info.trans_table.insert(state.zobrist, best_value, crate::tt::TTEntryFlag::Exact, depth, best_move);
     } else {
@@ -280,8 +287,11 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
 }
 
 pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> Eval {
-    if search_info.time_over() || *stop_flag.lock().unwrap() {
-        return alpha;
+    {
+        let stop_flag_guard = stop_flag.lock().unwrap();
+        if search_info.time_over() || *stop_flag_guard {
+            return alpha;
+        }
     }
     search_info.search_data.nodes_visited += 1;
     if state.has_repitition() || state.fifty_move_rule >= 100 {
@@ -324,6 +334,7 @@ pub fn quiescent_search_timed(state: &mut GameState, alpha: Eval, beta: Eval, de
     alpha
 }
 
+#[allow(dead_code)]
 pub fn eval_into_white_viewpoint(value: Eval, side_to_move: Side) -> f64 {
     if side_to_move == BLACK {
         -value as f64 / 100_f64

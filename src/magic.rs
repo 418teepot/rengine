@@ -1,8 +1,8 @@
 use crate::bitboard::{Bitboard, Square};
 use crate::gamestate::{Piece, ROOK, BISHOP};
-use rand::{Rng};
+use rand::Rng;
 
-pub static mailbox: [i8; 120] = [
+pub static MAILBOX: [i8; 120] = [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1,  0,  1,  2,  3,  4,  5,  6,  7, -1,
@@ -17,7 +17,7 @@ pub static mailbox: [i8; 120] = [
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
 ];
 
-pub static mailbox64: [i8; 64] = [
+pub static MAILBOX64: [i8; 64] = [
     21, 22, 23, 24, 25, 26, 27, 28,
     31, 32, 33, 34, 35, 36, 37, 38,
     41, 42, 43, 44, 45, 46, 47, 48,
@@ -79,12 +79,12 @@ pub fn relevant_slider_blockers(square: Square, piece: Piece) -> Bitboard {
     let rays = get_rays_for_piece(piece);
     for ray in rays {
         let mut i = 1;
-        if mailbox[(mailbox64[square] + ray * i) as usize] != -1 {
+        if MAILBOX[(MAILBOX64[square] + ray * i) as usize] != -1 {
             loop {
-                if mailbox[(mailbox64[square] + ray * (i+1)) as usize] == -1 {
+                if MAILBOX[(MAILBOX64[square] + ray * (i+1)) as usize] == -1 {
                     break;
                 }
-                blockers |= 1 << mailbox[(mailbox64[square] + ray * i) as usize];
+                blockers |= 1 << MAILBOX[(MAILBOX64[square] + ray * i) as usize];
                 i += 1;
             }
         }
@@ -98,13 +98,13 @@ pub fn slider_plays_for_blockers(square: Square, piece: Piece, blockers: Bitboar
     for ray in rays {
         let mut i = 1;
         loop {
-            if mailbox[(mailbox64[square] + ray * i) as usize] == -1 {
+            if MAILBOX[(MAILBOX64[square] + ray * i) as usize] == -1 {
                 break;
             }
 
-            plays |= Bitboard::square(mailbox[(mailbox64[square] + ray * i) as usize] as Square);
+            plays |= Bitboard::square(MAILBOX[(MAILBOX64[square] + ray * i) as usize] as Square);
 
-            if Bitboard::square(mailbox[(mailbox64[square] + ray * i) as usize] as usize) & blockers != Bitboard(0) {
+            if Bitboard::square(MAILBOX[(MAILBOX64[square] + ray * i) as usize] as usize) & blockers != Bitboard(0) {
                 break;
             }
 

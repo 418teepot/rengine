@@ -1,13 +1,18 @@
 use std::collections::HashMap;
+use std::io::BufRead;
+use std::io::Read;
 use std::io::Write;
 use std::io::stdout;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
 use crate::gamestate::GameState;
+use crate::search;
+use crate::search::Eval;
 use crate::search::SearchInfo;
 use crate::search::iterative_deepening;
 use crate::tt::TranspositionTable;
@@ -18,6 +23,8 @@ const ENGINE_NAME: &'static str = "engine";
 
 pub fn uci_loop() {
     let mut gamestate = GameState::new_starting_pos();
+    let stop_flag = Arc::new(Mutex::new(false));
+    let mut search: Option<JoinHandle<(Move, Eval)>> = None;
     loop {
         let mut input = String::new();
         stdin().read_line(&mut input).expect("Couldn't read string");
@@ -31,14 +38,34 @@ pub fn uci_loop() {
             "position" => {
                 gamestate = cmd_position(&parts[1..]);
             },
-            "go" => cmd_go(&parts[1..], gamestate.clone()),
+            "go" => {
+                if let Some(ref thread) = search {
+                    if thread.is_finished() {
+                        let mut stop_flag_guard = stop_flag.lock().unwrap();
+                        *stop_flag_guard = false;
+                        search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag));
+                    }
+                } else {
+                    let mut stop_flag_guard = stop_flag.lock().unwrap();
+                    *stop_flag_guard = false;
+                    search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag));
+                }
+            },
             "quit" => return,
+            "ucinewgame" => {
+                gamestate = GameState::new_starting_pos()
+            },
+            "stop" => {
+                let mut stop_flag_guard = stop_flag.lock().unwrap();
+                *stop_flag_guard = true;
+                search = None;
+            },
             _ => println!("{}", cmd),
         }
     }
 }
 
-pub fn cmd_go(parts: &[&str], gamestate: GameState) {
+pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<Mutex<bool>>) -> std::thread::JoinHandle<(Move, Eval)> {
     let mut part_index = 0;
     let mut settings: HashMap<String, i64> = HashMap::new();
     let mut is_infinite = false;
@@ -51,39 +78,27 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState) {
         settings.insert(parts[part_index].to_string(), parts[part_index + 1].parse().unwrap());
         part_index += 2;
     }
-    let stop_flag = Arc::new(Mutex::new(false));
     let mut gamestate = gamestate;
-    if is_infinite {
-        let stop_flag_clone = Arc::clone(&stop_flag);
+    let stop_flag_search = Arc::clone(stop_flag);
+    let wtime = *settings.get("wtime").unwrap_or(&0) as u64;
+    let btime = *settings.get("btime").unwrap_or(&0) as u64;
+    let search = if is_infinite {
         thread::spawn(move || {
-            iterative_deepening(&mut gamestate, Duration::from_secs(86400), &mut SearchInfo::new(Instant::now()), &stop_flag_clone)
-        });
-        wait_for_stop();
-        let mut stop_flag = stop_flag.lock().unwrap();
-        *stop_flag = true;
-        return;
-    }
-    if let Some(movetime) = settings.get("movetime") {
-        iterative_deepening(&mut gamestate, Duration::from_millis(*movetime as u64), &mut SearchInfo::new(Instant::now()), &stop_flag);
-        return;
-    }
-    let wtime = *settings.get("wtime").unwrap() as u64;
-    let btime = *settings.get("btime").unwrap() as u64;
-    let move_time = gamestate.calculate_movetime(wtime, btime);
-    iterative_deepening(&mut gamestate, Duration::from_millis(move_time), &mut SearchInfo::new(Instant::now()), &stop_flag);
+            iterative_deepening(&mut gamestate, Duration::from_secs(86400), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+        })
+    } else if let Some(&movetime) = settings.get("movetime") {
+        thread::spawn(move || {
+            iterative_deepening(&mut gamestate, Duration::from_millis(movetime as u64), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+        })
+    } else {
+        let move_time = gamestate.calculate_movetime(wtime, btime);
+        thread::spawn(move || {
+            iterative_deepening(&mut gamestate, Duration::from_millis(move_time), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+        })
+    };
     
-}
+    search
 
-fn wait_for_stop() {
-    loop {
-        let mut input = String::new();
-        stdin().read_line(&mut input).expect("Couldn't read string");
-        input.trim().to_string();
-        trim_newline(&mut input);
-        if input == "stop" {
-            return;
-        }
-    }
 }
 
 pub fn cmd_uci(_parts: &[&str]) {
