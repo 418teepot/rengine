@@ -245,7 +245,17 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             continue;
         }
         legals += 1;
-        value = -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, true, stop_flag);
+        value = if depth > 3 && legals > 3 && !r#move.is_capture() && !r#move.is_promotion() && !in_check && !search_info.killer_table.is_killer(depth, r#move) {
+            let reduction = if legals > 6 { 2 } else { 1 };
+            let tmp_value = -alpha_beta_timed(state, -beta, -alpha, depth - 1 - reduction, search_info, true, stop_flag);
+            if tmp_value > alpha {
+                -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, true, stop_flag)
+            } else {
+                tmp_value
+            }
+        } else {
+            -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, true, stop_flag)
+        };
         state.undo_move();
         if value > best_value {
             best_value = value;
