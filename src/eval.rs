@@ -459,7 +459,7 @@ impl GameState {
         eval
     }
 
-    fn space_mg(&self, our_side: Side) -> Eval {
+    pub fn space_mg(&self, our_side: Side) -> Eval {
         let space_area = self.space_area(our_side);
         let open_file_count = self.open_file_count();
         let piece_count = self.our_piece_count(our_side);
@@ -467,9 +467,9 @@ impl GameState {
         (space_area * weight) as Eval
     }
 
-    fn open_file_count(&self) -> u8 {
+    pub fn open_file_count(&self) -> u8 {
         let mut files = 0;
-        let pawns = (self.piece_boards[WHITE][PAWN] & self.piece_boards[BLACK][PAWN]);
+        let pawns = self.piece_boards[WHITE][PAWN] | self.piece_boards[BLACK][PAWN];
         for file in 0..8 {
             if (pawns & FILE_BITMASK[file]).is_empty() {
                 files += 1;
@@ -478,14 +478,14 @@ impl GameState {
         files
     }
 
-    fn our_piece_count(&self, our_side: Side) -> u8 {
+    pub fn our_piece_count(&self, our_side: Side) -> u8 {
         (self.piece_boards[our_side][ROOK].0.count_ones()
         + self.piece_boards[our_side][KNIGHT].0.count_ones()
         + self.piece_boards[our_side][BISHOP].0.count_ones()
         + self.piece_boards[our_side][QUEEN].0.count_ones()) as u8
     }
 
-    fn space_area(&self, our_side: Side) -> u8 {
+    pub fn space_area(&self, our_side: Side) -> u8 {
         let central_files = FILE_BITMASK[2] | FILE_BITMASK[3] | FILE_BITMASK[4] | FILE_BITMASK[5];
         let enemy_side = our_side ^ 1;
         let mut space_total = 0;

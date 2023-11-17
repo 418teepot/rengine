@@ -1,6 +1,7 @@
 use std::env;
 
 use movegen::RAY_FROM_TO;
+use crate::gamestate::{GameState, WHITE};
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
 
@@ -31,5 +32,4 @@ fn main() {
     initialize_lazy();
     println!("Done!");
     uci_loop();
-    
 }
