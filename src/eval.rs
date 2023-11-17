@@ -352,10 +352,11 @@ impl GameState {
     pub fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
         (self.material[our_side] - self.material[enemy_side]) 
         + (self.psqt_mg[our_side] - self.psqt_mg[enemy_side]) 
-        + self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side)
+        + (self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side))
         + (self.mobility_mg(our_side) - self.mobility_mg(enemy_side))
-        + self.pieces_mg(our_side) - self.pieces_mg(enemy_side)
-        + self.pawns_mg(our_side) - self.pawns_mg(enemy_side)
+        + (self.pieces_mg(our_side) - self.pieces_mg(enemy_side))
+        + (self.pawns_mg(our_side) - self.pawns_mg(enemy_side))
+        + (self.space_mg(our_side) - self.space_mg(enemy_side))
         + TEMPO_VALUE
     }
 
@@ -438,9 +439,9 @@ impl GameState {
     pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
         (self.material[our_side] - self.material[enemy_side]) 
         + (self.psqt_eg[our_side] - self.psqt_eg[enemy_side])
-        + self.pieces_eg(our_side) - self.pieces_eg(enemy_side)
-        + self.mobility_eg(our_side) - self.mobility_eg(enemy_side) 
-        + self.pawns_eg(our_side) - self.pawns_eg(enemy_side)
+        + (self.pieces_eg(our_side) - self.pieces_eg(enemy_side))
+        + (self.mobility_eg(our_side) - self.mobility_eg(enemy_side)) 
+        + (self.pawns_eg(our_side) - self.pawns_eg(enemy_side))
         + TEMPO_VALUE
     }
 
@@ -455,53 +456,67 @@ impl GameState {
         } else {
             eval += (3 - min(3, (KING_MOVES[self.piece_boards[our_side][KING].next_piece_index()] & self.piece_boards[our_side][PAWN]).0.count_ones() as Eval)) * MISSING_PAWN_SHIELD_PENALTY
         }
-        /* 
-        let king_square = self.piece_boards[our_side][KING].next_piece_index();
-        let king_moves = king_move_bitboard(king_square);
-        let king_attack_zone = if our_side == WHITE {
-            king_moves | king_moves << 8 | king_moves << 16
-        } else {
-            king_moves | king_moves >> 8 | king_moves >> 16
-        };
-        let mut value_of_attacks: i32 = 0;
-        let mut attacking_piece_count = 0;
-        let enemy_side = our_side ^ 1;
-        for square in self.piece_boards[enemy_side][KNIGHT] {
-            let moves = knight_move_bitboard(square);
-            let attacks_on_zone = king_attack_zone & moves;
-            if attacks_on_zone.is_filled() {
-                attacking_piece_count += 1;
-                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 20;
-            }
-        }
-        let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
-        for square in self.piece_boards[enemy_side][BISHOP] {
-            let moves = bishop_move_bitboard(square, blockers);
-            let attacks_on_zone = king_attack_zone & moves;
-            if attacks_on_zone.is_filled() {
-                attacking_piece_count += 1;
-                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 20;
-            }
-        }
-        for square in self.piece_boards[enemy_side][ROOK] {
-            let moves = rook_move_bitboard(square, blockers);
-            let attacks_on_zone = king_attack_zone & moves;
-            if attacks_on_zone.is_filled() {
-                attacking_piece_count += 1;
-                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 40;
-            }
-        }
-        for square in self.piece_boards[enemy_side][QUEEN] {
-            let moves = queen_move_bitboard(square, blockers);
-            let attacks_on_zone = king_attack_zone & moves;
-            if attacks_on_zone.is_filled() {
-                attacking_piece_count += 1;
-                value_of_attacks += attacks_on_zone.0.count_ones() as i32 * 80;
-            }
-        }
-        eval -= value_of_attacks * attack_weight[attacking_piece_count] / 100;
-        */
         eval
+    }
+
+    fn space_mg(&self, our_side: Side) -> Eval {
+        let space_area = self.space_area(our_side);
+        let open_file_count = self.open_file_count();
+        let piece_count = self.our_piece_count(our_side);
+        let weight = piece_count - (2 * open_file_count);
+        (space_area * weight) as Eval
+    }
+
+    fn open_file_count(&self) -> u8 {
+        let mut files = 0;
+        let pawns = (self.piece_boards[WHITE][PAWN] & self.piece_boards[BLACK][PAWN]);
+        for file in 0..8 {
+            if (pawns & FILE_BITMASK[file]).is_empty() {
+                files += 1;
+            }
+        }
+        files
+    }
+
+    fn our_piece_count(&self, our_side: Side) -> u8 {
+        (self.piece_boards[our_side][ROOK].0.count_ones()
+        + self.piece_boards[our_side][KNIGHT].0.count_ones()
+        + self.piece_boards[our_side][BISHOP].0.count_ones()
+        + self.piece_boards[our_side][QUEEN].0.count_ones()) as u8
+    }
+
+    fn space_area(&self, our_side: Side) -> u8 {
+        let central_files = FILE_BITMASK[2] | FILE_BITMASK[3] | FILE_BITMASK[4] | FILE_BITMASK[5];
+        let enemy_side = our_side ^ 1;
+        let mut space_total = 0;
+        if our_side == WHITE {
+            let our_ranks = RANK_BITMASK[1] | RANK_BITMASK[2] |RANK_BITMASK[3];
+            let space_area = central_files & our_ranks;
+            let pawn_attacks = ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) >> 7)
+            & ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) >> 9);
+            let space_area = space_area & !pawn_attacks & !self.piece_boards[our_side][PAWN];
+            space_total += space_area.0.count_ones() as u8;
+            let safe_behind_pawn_one_square = (self.piece_boards[our_side][PAWN] >> 8) & space_area;
+            space_total += safe_behind_pawn_one_square.0.count_ones() as u8;
+            let safe_behind_pawn_two_square = (self.piece_boards[our_side][PAWN] >> 16) & space_area;
+            space_total += safe_behind_pawn_two_square.0.count_ones() as u8;
+            let safe_behind_pawn_three_square = (self.piece_boards[our_side][PAWN] >> 24) & space_area;
+            space_total += safe_behind_pawn_three_square.0.count_ones() as u8;
+        } else {
+            let our_ranks = RANK_BITMASK[4] | RANK_BITMASK[5] |RANK_BITMASK[6];
+            let space_area = central_files & our_ranks;
+            let pawn_attacks = ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) << 7)
+            & ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) << 9);
+            let space_area = space_area & !pawn_attacks & !self.piece_boards[our_side][PAWN];
+            space_total += space_area.0.count_ones() as u8;
+            let safe_behind_pawn_one_square = (self.piece_boards[our_side][PAWN] << 8) & space_area;
+            space_total += safe_behind_pawn_one_square.0.count_ones() as u8;
+            let safe_behind_pawn_two_square = (self.piece_boards[our_side][PAWN] << 16) & space_area;
+            space_total += safe_behind_pawn_two_square.0.count_ones() as u8;
+            let safe_behind_pawn_three_square = (self.piece_boards[our_side][PAWN] << 24) & space_area;
+            space_total += safe_behind_pawn_three_square.0.count_ones() as u8;
+        }
+        space_total
     }
 
     fn rook_on_open_file(&self, our_side: Side) -> u8 {

@@ -180,6 +180,7 @@ pub fn extract_pv(state: &mut GameState, t_table: &TranspositionTable) -> String
     pv_string
 }
 
+#[allow(dead_code)]
 pub fn perft_debug(state: &mut GameState, depth: u32) {
     assert!(depth > 0);
     let mut total = 0;
@@ -195,6 +196,7 @@ pub fn perft_debug(state: &mut GameState, depth: u32) {
     println!("Perft({}): {}", depth, total);
 }
 
+#[allow(dead_code)]
 pub fn perft(state: &mut GameState, depth: u32) -> u32 {
     if depth == 0 {
         return 1;
@@ -209,6 +211,7 @@ pub fn perft(state: &mut GameState, depth: u32) -> u32 {
     nodes
 }
 
+#[allow(dead_code)]
 pub fn check_wrong_undo(state: &mut GameState) {
     for r#move in state.generate_legal_moves() {
         let state_old = state.clone();
@@ -222,6 +225,7 @@ pub fn check_wrong_undo(state: &mut GameState) {
     }
 }
 
+#[allow(dead_code)]
 pub fn perft_timed(state: &mut GameState, depth: u32) {
     let start = Instant::now();
     let result = perft(state, depth);

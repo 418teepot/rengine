@@ -31,17 +31,5 @@ fn main() {
     initialize_lazy();
     println!("Done!");
     uci_loop();
-    /* 
-    
-    let mut search_info = SearchInfo::new(Instant::now());
-    loop {
-        if gs.game_is_over() {
-            break;
-        }
-        let (best_move, best_eval) = iterative_deepening(&mut gs, Duration::from_secs(15), &mut search_info);
-        gs.apply_legal_move(best_move);
-    }
-    */
-    
     
 }

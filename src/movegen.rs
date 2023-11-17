@@ -789,9 +789,6 @@ fn is_slider(piece: Piece) -> bool {
     piece > PAWN && piece < KING
 }
 
-
-
-
 static KING_RAYS: [i8; 8] = [-11, -10, -9, -1, 1,  9, 10, 11];
 static KNIGHT_RAYS: [i8; 8] = [-21, -19,-12, -8, 8, 12, 19, 21];
 
