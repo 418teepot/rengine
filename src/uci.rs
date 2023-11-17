@@ -60,6 +60,9 @@ pub fn uci_loop() {
                 *stop_flag_guard = true;
                 search = None;
             },
+            "winboard" => {
+                ()
+            },
             _ => println!("{}", cmd),
         }
     }

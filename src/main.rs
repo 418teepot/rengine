@@ -28,8 +28,8 @@ fn initialize_lazy() {
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    println!("Initializing lookup tables...");
+    // println!("Initializing lookup tables...");
     initialize_lazy();
-    println!("Done!");
+    // println!("Done!");
     uci_loop();
 }
