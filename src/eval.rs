@@ -368,17 +368,16 @@ impl GameState {
         let mut eval = 0;
         for pawn in self.piece_boards[our_side][PAWN] {
             if self.is_doubled(our_side, pawn) {
-                eval -= 10;
+                eval -= 5;
             }
             if self.is_isolated(our_side, pawn) {
-                eval -= 6;
+                eval -= 5;
             }
             if self.is_passed(our_side, pawn) {
                 eval += [0, 10, 20, 30, 60, 160, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
-            let is_connected = self.is_connected(our_side, pawn);
-            if is_connected > 0 {
-                eval += is_connected as Eval * 20;
+            if self.is_connected(our_side, pawn) {
+                eval += 20;
             }
         }
         eval
@@ -399,14 +398,14 @@ impl GameState {
                 eval -= 30;
             }
             if self.is_isolated(our_side, pawn) {
-                eval -= 15;
+                eval -= 8;
             }
             if self.is_passed(our_side, pawn) {
                 eval += [0, 30, 35, 45, 70, 150, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
-            let is_connected = self.is_connected(our_side, pawn);
-            if is_connected > 0 {
-                eval += is_connected as Eval * 20;
+            
+            if self.is_connected(our_side, pawn) {
+                eval += 20;
             }
         }
         eval
@@ -424,7 +423,7 @@ impl GameState {
         (self.piece_boards[our_side ^ 1][PAWN] & PASSED_MASK[our_side][square]).is_empty()
     }
 
-    fn is_connected(&self, our_side: Side, square: Square) -> u8 {
+    fn is_connected(&self, our_side: Side, square: Square) -> bool {
         let pawn_board = Bitboard::square(square);
         let attacks = if our_side == WHITE {
             ((pawn_board &!FILE_BITMASK[0]) >> 7) 
@@ -433,7 +432,9 @@ impl GameState {
             ((pawn_board &!FILE_BITMASK[0]) << 7)
             | ((pawn_board &!FILE_BITMASK[7]) << 9)
         };
-        (self.piece_boards[our_side][PAWN] & attacks).0.count_ones() as u8
+        let phalanx = (((pawn_board & !FILE_BITMASK[0]) >> 1) | ((pawn_board & !FILE_BITMASK[7]) << 1)) & self.piece_boards[our_side][PAWN];
+        (self.piece_boards[our_side][PAWN] & attacks).is_filled()
+        || phalanx.is_filled()
     }
 
     pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
@@ -460,11 +461,14 @@ impl GameState {
     }
 
     pub fn space_mg(&self, our_side: Side) -> Eval {
+        if self.phase() >= 64 {
+            return 0;
+        }
         let space_area = self.space_area(our_side);
         let open_file_count = self.open_file_count();
         let piece_count = self.our_piece_count(our_side);
-        let weight = piece_count - (2 * open_file_count);
-        (space_area * weight) as Eval
+        let weight: i8 = max(0, piece_count as i8 - (2 * open_file_count as i8));
+        (space_area * weight as u8) as Eval
     }
 
     pub fn open_file_count(&self) -> u8 {

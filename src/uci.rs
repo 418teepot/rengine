@@ -10,6 +10,11 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
+use rand::distributions::WeightedIndex;
+use rand::thread_rng;
+use rand::prelude::*;
+
+use crate::book::OPENING_BOOK;
 use crate::gamestate::GameState;
 use crate::search;
 use crate::search::Eval;
@@ -62,6 +67,9 @@ pub fn uci_loop() {
             },
             "winboard" => {
                 ()
+            },
+            "printdebug" => {
+                gamestate.print_debug();
             },
             _ => println!("{}", cmd),
         }

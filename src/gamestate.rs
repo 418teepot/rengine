@@ -139,6 +139,70 @@ impl GameState {
         state
     }
 
+    pub fn to_reduced_book_fen(&self) -> String {
+        let mut fen_string = String::new();
+
+        let mut empty_stack: u32 = 0;
+        for rank in (0..8).rev() {
+            for file in 0..8 {
+                let square = rank * 8 + file;
+                if square % 8 == 0 {
+                    if empty_stack > 0 {
+                        fen_string.push(std::char::from_digit(empty_stack, 10).unwrap());
+                    }
+                    if !fen_string.is_empty() {
+                        fen_string.push('/');
+                    }
+                    empty_stack = 0;
+                }
+                match self.find_piece_on_all(square) {
+                    None => {
+                        empty_stack += 1;
+                    },
+                    Some((side, piece)) => {
+                        if empty_stack > 0 {
+                            fen_string.push(std::char::from_digit(empty_stack, 10).unwrap());
+                        }
+                        let piece_char = piece_to_char(side, piece);
+                        fen_string.push(piece_char);
+                        empty_stack = 0;
+                    }
+                }
+            }
+        }
+
+        fen_string.push(' ');
+        fen_string.push(if self.side_to_move() == WHITE { 'w' } else { 'b' });
+        fen_string.push(' ');
+
+        let mut some_castle = false;
+        if self.castling_rights[WHITE_KINGSIDE_CASTLE] {
+            fen_string.push('K');
+            some_castle = true;
+        }
+        if self.castling_rights[WHITE_QUEENSIDE_CASTLE] {
+            fen_string.push('Q');
+            some_castle = true;
+        }
+        if self.castling_rights[BLACK_KINGSIDE_CASTLE] {
+            fen_string.push('k');
+            some_castle = true;
+        }
+        if self.castling_rights[BLACK_QUEENSIDE_CASTLE] {
+            fen_string.push('q');
+            some_castle = true;
+        }
+
+        if !some_castle {
+            fen_string.push('-');
+        }
+
+        fen_string.push(' ');
+        fen_string.push('-');
+
+        fen_string
+    }
+
     pub fn new_starting_pos() -> Self {
         Self::new_from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
     }
@@ -559,6 +623,23 @@ impl GameState {
 #[inline(always)]
 fn rank_file_to_square(file: Square, rank: Square) -> Square {
     rank * 8 + file
+}
+
+fn piece_to_char(side: Side, piece: Piece) -> char {
+    let piece = match piece {
+        PAWN => 'p',
+        ROOK => 'r',
+        BISHOP => 'b',
+        KNIGHT => 'n',
+        QUEEN => 'q',
+        KING => 'k',
+        _ => unreachable!(),
+    };
+    if side == WHITE {
+        piece.to_ascii_uppercase()
+    } else {
+        piece
+    }
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
