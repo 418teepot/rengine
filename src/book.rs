@@ -6,12 +6,10 @@ lazy_static! {
         let mut book = HashMap::new();
 
         let book_file_contents = read_to_string("resources/book.txt").unwrap_or("".to_string());
-
-        let mut line_iterator = book_file_contents.lines();
         
         let mut pos_string: String = String::new();
         let mut moves = Vec::new();
-        while let Some(line) = line_iterator.next() {
+        for line in book_file_contents.lines() {
             if line.starts_with("pos") {
                 book.insert(pos_string.to_string(), moves);
                 pos_string = line[4..].to_string();
