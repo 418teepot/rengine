@@ -7,7 +7,7 @@ use rand::prelude::*;
 
 use crate::bitboard::NUM_OF_SQUARES;
 use crate::book::OPENING_BOOK;
-use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, self, NUM_OF_PLAYERS};
+use crate::gamestate::{GameState, NUM_OF_PIECES, BLACK, Side, NUM_OF_PLAYERS};
 use crate::r#move::{Move, MoveList};
 use crate::tt::TranspositionTable;
 use crate::uci::extract_pv;
@@ -17,13 +17,8 @@ pub type Eval = i32;
 const INFINITY: Eval = 2000000000;
 const MAX_QUIESCENCE: u8 = 7;
 
-pub const MAX_GAME_DEPTH: Eval = 512;
-pub const IS_MATE: Eval = INFINITY - MAX_GAME_DEPTH;
-
 const MAX_SEARCH_DEPTH: u8 = 30;
 const MAX_KILLER_MOVES: usize = 2;
-
-const R: u8 = 4;
 
 const TRANS_TABLE_SIZE: usize = 10_000_000;
 
@@ -125,9 +120,6 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
         print!("nodes {} ", search_info.search_data.nodes_visited);
         print!("nps {} ", nps);
         println!("pv {}", extract_pv(state, &search_info.trans_table));
-        
-        // print!("cutnodes {} ", search_info.search_data.cut_nodes);
-        // print!("visited {} ", search_info.search_data.nodes_visited);
         
         search_info.search_data.hash_hits = 0;
         search_info.search_data.cut_nodes = 0;

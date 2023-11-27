@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs::read_to_string;
-use std::io::{self, BufRead};
 
 lazy_static! {
     pub static ref OPENING_BOOK: HashMap<String, Vec<(String, u32)>> = {

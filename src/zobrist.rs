@@ -1,5 +1,3 @@
-use std::default;
-
 use crate::gamestate::{Piece, Side, NUM_OF_PIECES, NUM_OF_PLAYERS, BLACK};
 use crate::bitboard::{Square, Bitboard, NUM_OF_SQUARES};
 use rand::Rng;

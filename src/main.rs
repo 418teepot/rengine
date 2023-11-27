@@ -2,7 +2,6 @@ use std::env;
 
 use book::OPENING_BOOK;
 use movegen::RAY_FROM_TO;
-use crate::gamestate::{GameState, WHITE};
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
 

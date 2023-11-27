@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::io::BufRead;
-use std::io::Read;
 use std::io::Write;
 use std::io::stdout;
 use std::sync::Arc;
@@ -10,21 +8,15 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
 
-use rand::distributions::WeightedIndex;
-use rand::thread_rng;
-use rand::prelude::*;
-
-use crate::book::OPENING_BOOK;
 use crate::gamestate::GameState;
-use crate::search;
 use crate::search::Eval;
 use crate::search::SearchInfo;
 use crate::search::iterative_deepening;
 use crate::tt::TranspositionTable;
 use crate::r#move::Move;
-use std::io::{stdin};
+use std::io::stdin;
 
-const ENGINE_NAME: &'static str = "engine";
+const ENGINE_NAME: &str = "engine";
 
 pub fn uci_loop() {
     let mut gamestate = GameState::new_starting_pos();
@@ -66,7 +58,7 @@ pub fn uci_loop() {
                 search = None;
             },
             "winboard" => {
-                ()
+
             },
             "printdebug" => {
                 gamestate.print_debug();
