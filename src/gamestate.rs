@@ -63,7 +63,6 @@ pub struct GameState {
 }
 
 impl GameState {
-    // TODO: Recoverable error for malformed fen string
     pub fn new_from_fen(fen: &str) -> Self {
         let parts: Vec<&str> = fen.split_whitespace().collect();
         if parts.len() != 6 {
@@ -208,7 +207,10 @@ impl GameState {
     }
 
     pub fn apply_legal_move(&mut self, r#move: Move) {
-        assert!(r#move != Move::new_from_to(0, 0, 0));
+        if r#move == Move::new_from_to(0, 0, 0) {
+            self.dump_panic_debug();
+            panic!("Lol");
+        }
         self.history.push(History { r#move, en_passant: self.en_passant_board, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();
@@ -521,6 +523,36 @@ impl GameState {
             else if to == H1 {
                 self.remove_castling_right(WHITE_KINGSIDE_CASTLE);
             }
+        
+    }
+
+    pub fn is_game_over(&mut self) -> bool {
+        let moves = self.generate_pseudo_legal_moves();
+        if self.fifty_move_rule >= 100 || self.has_repitition() {
+            return true;
+        }
+        for r#move in moves {
+            if self.apply_pseudo_legal_move(r#move) {
+                self.undo_move();
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn dump_panic_debug(&self) {
+        println!("\nFen_str: {}\n", self.to_reduced_book_fen());
+        print!("Move history: ");
+        for his in self.history.clone() {
+            print!("{} ", his.r#move.to_algebraic());
+        }
+        println!();
+        let pseudo_legal_moves = self.generate_pseudo_legal_moves();
+        print!("Pseudo legal moves: ");
+        for r#move in pseudo_legal_moves {
+            print!("{} ", r#move.to_algebraic());
+        }
+        println!();
         
     }
 

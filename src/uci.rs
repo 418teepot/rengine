@@ -87,16 +87,16 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<Mutex<bool>>
     let btime = *settings.get("btime").unwrap_or(&0) as u64;
     let search = if is_infinite {
         thread::spawn(move || {
-            iterative_deepening(&mut gamestate, Duration::from_secs(86400), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+            iterative_deepening::<true>(&mut gamestate, Duration::from_secs(86400), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            iterative_deepening(&mut gamestate, Duration::from_millis(movetime as u64), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+            iterative_deepening::<true>(&mut gamestate, Duration::from_millis(movetime as u64), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime);
         thread::spawn(move || {
-            iterative_deepening(&mut gamestate, Duration::from_millis(move_time), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
+            iterative_deepening::<true>(&mut gamestate, Duration::from_millis(move_time), &mut SearchInfo::new(Instant::now()), &stop_flag_search)
         })
     };
     

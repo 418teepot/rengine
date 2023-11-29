@@ -5,7 +5,6 @@ use rand::Rng;
 #[derive(Default, Copy, Clone, PartialEq, Debug)]
 pub struct ZobristHash(pub u64);
 
-// TODO: inline
 impl ZobristHash {
     #[inline(always)]
     pub fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {

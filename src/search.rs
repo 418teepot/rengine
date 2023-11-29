@@ -14,13 +14,13 @@ use crate::uci::extract_pv;
 
 pub type Eval = i32;
 
-const INFINITY: Eval = 2000000000;
+pub const INFINITY: Eval = 2000000000;
 const MAX_QUIESCENCE: u8 = 7;
 
 const MAX_SEARCH_DEPTH: u8 = 30;
 const MAX_KILLER_MOVES: usize = 2;
 
-const TRANS_TABLE_SIZE: usize = 10_000_000;
+const TRANS_TABLE_SIZE: usize = 64_000;
 
 pub struct SearchInfo {
     pub killer_table: KillerTable,
@@ -77,7 +77,7 @@ pub struct SearchData {
     pub nodes_visited: u32,
 }
 
-pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> (Move, Eval) {
+pub fn iterative_deepening<const UCI_MODE: bool>(state: &mut GameState, max_time: Duration, search_info: &mut SearchInfo, stop_flag: &Arc<Mutex<bool>>) -> (Move, Eval) {
     if max_time != Duration::from_secs(86400) {
         if let Some(entry) = OPENING_BOOK.get(&state.to_reduced_book_fen()) {
             
@@ -86,7 +86,9 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
             let dist = WeightedIndex::new(weights).unwrap();
             let mut rng = thread_rng();
             let r#move = moves[dist.sample(&mut rng)].to_string();
-            println!("bestmove {}", r#move);
+            if UCI_MODE {
+                println!("bestmove {}", r#move);
+            }
             {
                 let mut stop_flag_guard = stop_flag.lock().unwrap();
                 *stop_flag_guard = true;
@@ -106,6 +108,9 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
         {
             let stop_flag_lock = stop_flag.lock().unwrap();
             if search_info.time_over() || *stop_flag_lock {
+                if best_move == Move::new_from_to(0, 0, 0) {
+                    panic!();
+                }
                 search_info.trans_table.insert(state.zobrist, candidate_eval, crate::tt::TTEntryFlag::Alpha, depth, candidate_move);
                 break;
             }
@@ -114,13 +119,15 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
 
         let iteration_seconds = iteration_start.elapsed().as_secs_f64();
         let nps = (search_info.search_data.nodes_visited as f64 / iteration_seconds) as u64;
-
-        print!("info depth {depth} ");
-        print!("score cp {} ", best_eval);
-        print!("nodes {} ", search_info.search_data.nodes_visited);
-        print!("nps {} ", nps);
-        println!("pv {}", extract_pv(state, &search_info.trans_table));
         
+        if UCI_MODE {
+            print!("info depth {depth} ");
+            print!("score cp {} ", best_eval);
+            print!("nodes {} ", search_info.search_data.nodes_visited);
+            print!("nps {} ", nps);
+            println!("pv {}", extract_pv(state, &search_info.trans_table));
+        }
+
         search_info.search_data.hash_hits = 0;
         search_info.search_data.cut_nodes = 0;
         search_info.search_data.nodes_visited = 0;
@@ -140,7 +147,9 @@ pub fn iterative_deepening(state: &mut GameState, max_time: Duration, search_inf
     search_info.search_data.hash_hits = 0;
     search_info.search_data.cut_nodes = 0;
     search_info.search_data.nodes_visited = 0;
-    println!("bestmove {}", best_move.to_algebraic());
+    if UCI_MODE {
+        println!("bestmove {}", best_move.to_algebraic());
+    }
     (best_move, best_eval)
 }
 
@@ -257,7 +266,6 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
 
     let mut best_move = Move::new_from_to(0, 0, 0);
     let mut best_value = -INFINITY;
-    let mut value = -INFINITY;
     for move_index in 0..moves.length {
         moves.highest_next_to_index(move_index);
         let r#move = moves.moves[move_index as usize];
@@ -265,7 +273,7 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             continue;
         }
         legals += 1;
-        value = if depth > 3 && legals > 3 && !r#move.is_capture() && !r#move.is_promotion() && !in_check && search_info.killer_table.is_killer(depth, r#move).is_none() {
+        let value = if depth > 3 && legals > 3 && !r#move.is_capture() && !r#move.is_promotion() && !in_check && search_info.killer_table.is_killer(depth, r#move).is_none() {
             let reduction = if legals > 6 { 2 } else { 1 };
             let tmp_value = -alpha_beta_timed(state, -beta, -alpha, depth - 1 - reduction, search_info, true, stop_flag);
             if tmp_value > alpha {
@@ -277,10 +285,10 @@ pub fn alpha_beta_timed(state: &mut GameState, alpha: Eval, beta: Eval, depth: u
             -alpha_beta_timed(state, -beta, -alpha, depth - 1, search_info, true, stop_flag)
         };
         state.undo_move();
-        if value > best_value {
+        if value >= best_value {
             best_value = value;
             best_move = r#move;
-            if value > alpha {
+            if value >= alpha {
                 if value >= beta {
                     search_info.search_data.cut_nodes += 1;
 
