@@ -22,6 +22,7 @@ mod eval;
 mod tt;
 mod book;
 mod texel;
+mod lockless;
 
 fn initialize_lazy() {
     lazy_static::initialize(&RAY_FROM_TO);
@@ -33,11 +34,13 @@ fn initialize_lazy() {
 }
 
 fn main() {
-    /* 
+ 
     env::set_var("RUST_BACKTRACE", "1");
     initialize_lazy();
     uci_loop();
-    */
+    
+    /*
     let texel_record = generate_texel_sample(64_000, Duration::from_millis(60));
     println!("{}", texel_record);
+    */
 }

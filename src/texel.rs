@@ -2,7 +2,7 @@ use std::{time::{Duration, Instant}, sync::{Arc, Mutex}, fs::File, io::Write, ar
 
 use rand::{distributions::WeightedIndex, thread_rng, prelude::*};
 
-use crate::{gamestate::GameState, search::{SearchInfo, iterative_deepening, INFINITY, eval_into_white_viewpoint}, book::OPENING_BOOK, r#move::Move};
+use crate::{gamestate::GameState, search::{SearchInfo, iterative_deepening, INFINITY, eval_into_white_viewpoint, Eval}, book::OPENING_BOOK, r#move::Move};
 
 pub fn generate_texel_sample(samples: u32, movetime: Duration) -> String {
     let mut texel_samples = String::new();
@@ -19,7 +19,7 @@ pub fn generate_texel_sample(samples: u32, movetime: Duration) -> String {
 pub fn texel_game(movetime: Duration) -> String {
     let mut fen_record: String = String::new();
     let mut gamestate = GameState::new_starting_pos();
-    let mut eval: i32 = 0;
+    let mut eval: Eval = 0;
     while !gamestate.is_game_over() {
         let mut search_info = SearchInfo::new(Instant::now());
         let stop_flag = Arc::new(Mutex::new(false));
