@@ -221,7 +221,7 @@ impl Move {
 #[derive(Copy, Debug, Clone)]
 pub struct MoveList {
     pub moves: [Move; MAX_MOVES],
-    pub values: [Eval; MAX_MOVES],
+    pub values: [u32; MAX_MOVES],
     pub length: u8,
 }
 

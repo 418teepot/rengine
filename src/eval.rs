@@ -350,14 +350,14 @@ impl GameState {
     }
 
     pub fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
-        (self.material[our_side] - self.material[enemy_side]) 
-        + (self.psqt_mg[our_side] - self.psqt_mg[enemy_side]) 
-        + (self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side))
-        + (self.mobility_mg(our_side) - self.mobility_mg(enemy_side))
-        + (self.pieces_mg(our_side) - self.pieces_mg(enemy_side))
-        + (self.pawns_mg(our_side) - self.pawns_mg(enemy_side))
-        + (self.space_mg(our_side) - self.space_mg(enemy_side))
-        + TEMPO_VALUE
+        let material = (self.material[our_side] - self.material[enemy_side]);
+        let psqt = (self.psqt_mg[our_side] - self.psqt_mg[enemy_side]); 
+        let king = (self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side));
+        let mobility = (self.mobility_mg(our_side) - self.mobility_mg(enemy_side));
+        let pieces = (self.pieces_mg(our_side) - self.pieces_mg(enemy_side));
+        let pawns = (self.pawns_mg(our_side) - self.pawns_mg(enemy_side));
+        let space = (self.space_mg(our_side) - self.space_mg(enemy_side));
+        material + psqt + king + mobility + pieces + pawns + space
     }
 
     fn pieces_mg(&self, our_side: Side) -> Eval {
@@ -368,16 +368,16 @@ impl GameState {
         let mut eval = 0;
         for pawn in self.piece_boards[our_side][PAWN] {
             if self.is_doubled(our_side, pawn) {
-                eval -= 5;
+                eval -= 10;
             }
             if self.is_isolated(our_side, pawn) {
-                eval -= 5;
+                eval -= 10;
             }
             if self.is_passed(our_side, pawn) {
                 eval += [0, 10, 20, 30, 60, 160, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
             }
             if self.is_connected(our_side, pawn) {
-                eval += 20;
+                // eval += 10;
             }
         }
         eval
@@ -405,7 +405,7 @@ impl GameState {
             }
             
             if self.is_connected(our_side, pawn) {
-                eval += 20;
+                // eval += 20;
             }
         }
         eval
@@ -433,8 +433,7 @@ impl GameState {
             | ((pawn_board &!FILE_BITMASK[7]) << 9)
         };
         let phalanx = (((pawn_board & !FILE_BITMASK[0]) >> 1) | ((pawn_board & !FILE_BITMASK[7]) << 1)) & self.piece_boards[our_side][PAWN];
-        (self.piece_boards[our_side][PAWN] & attacks).is_filled()
-        || phalanx.is_filled()
+        (self.piece_boards[our_side][PAWN] & attacks).is_filled() || phalanx.is_filled()
     }
 
     pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
@@ -483,10 +482,9 @@ impl GameState {
     }
 
     pub fn our_piece_count(&self, our_side: Side) -> u8 {
-        (self.piece_boards[our_side][ROOK].0.count_ones()
-        + self.piece_boards[our_side][KNIGHT].0.count_ones()
-        + self.piece_boards[our_side][BISHOP].0.count_ones()
-        + self.piece_boards[our_side][QUEEN].0.count_ones()) as u8
+        (self.piece_boards[our_side][KNIGHT].0.count_ones()
+        + self.piece_boards[our_side][BISHOP].0.count_ones())
+        as u8
     }
 
     pub fn space_area(&self, our_side: Side) -> u8 {

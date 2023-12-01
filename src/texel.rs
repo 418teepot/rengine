@@ -1,4 +1,4 @@
-use std::{time::{Duration, Instant}, sync::{Arc, Mutex}, fs::File, io::Write, arch::x86_64::_MM_FROUND_NINT};
+use std::{time::{Duration, Instant}, sync::{Arc, Mutex}, fs::File, io::Write, arch::x86_64::_MM_FROUND_NINT, cell::{UnsafeCell, SyncUnsafeCell}};
 
 use rand::{distributions::WeightedIndex, thread_rng, prelude::*};
 
@@ -35,7 +35,7 @@ pub fn texel_game(movetime: Duration) -> String {
         }
         fen_record.push_str(&gamestate.to_reduced_book_fen());
         fen_record.push('\n');
-        let result_tuple = iterative_deepening::<false>(&mut gamestate, movetime, &mut search_info, &stop_flag);
+        let result_tuple = iterative_deepening::<false>(&mut gamestate, movetime, &mut search_info, &Arc::new(SyncUnsafeCell::new(false)));
         let r#move = result_tuple.0;
         eval = result_tuple.1;
         gamestate.apply_legal_move(r#move);
