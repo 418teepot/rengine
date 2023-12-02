@@ -99,16 +99,16 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: Arc<SyncUnsafeCel
     let stop_flag_clone = Arc::clone(&stop_flag);
     let search = if is_infinite {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(8, Duration::from_micros(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(1, Duration::from_micros(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(8, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime);
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(8, Duration::from_millis(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     };
     

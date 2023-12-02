@@ -139,6 +139,9 @@ pub fn iterative_deepening<const SEARCHMODE: SearchProtocol>(mut thread_data: Th
             println!("info depth {} cp {} pv {}", depth, best_eval, extract_pv(&mut thread_data.state, thread_data.trans_table.get()));
         }
     }
+    if thread_data.thread_num == 0 {
+        println!("bestmove {}", best_move.to_algebraic());
+    }
     (best_move, best_eval)
 }
 
