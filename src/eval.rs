@@ -3,7 +3,7 @@ use std::cmp::{min, max};
 use crate::bitboard::{Bitboard, Square, NUM_OF_SQUARES};
 use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT};
 use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK};
-use crate::search::Eval;
+use crate::smpsearch::Eval;
 
 const PAWN_VALUE: Eval = 100;
 const ROOK_VALUE: Eval = 500;

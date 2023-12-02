@@ -1,34 +1,36 @@
-use crate::search::INFINITY;
+use crate::smpsearch::INFINITY;
 
-use crate::{zobrist::ZobristHash, r#move::Move, search::Eval};
+use crate::{zobrist::ZobristHash, r#move::Move, smpsearch::Eval};
 
-struct LockLessTransTable<const SIZE: usize> {
-    buckets: [LockLessEntry; SIZE],
+const TRANS_TABLE_SIZE: usize = 1_000_000;
+
+pub struct LockLessTransTable {
+    buckets: [LockLessEntry; TRANS_TABLE_SIZE],
 }
 
-impl<const SIZE: usize> LockLessTransTable<SIZE> {
-    fn insert(&mut self, key: ZobristHash, value: LockLessValue) {
-        let index = key.0 as usize % SIZE;
+impl LockLessTransTable {
+    pub fn insert(&mut self, key: ZobristHash, value: LockLessValue) {
+        let index = key.0 as usize % self.buckets.len();
         self.buckets[index].key = ZobristHash(key.0 ^ value.0);
         self.buckets[index].value = value;
     }
 
-    fn get(&self, key: ZobristHash) -> Option<LockLessValue> {
-        let index = key.0 as usize % SIZE;
+    pub fn get(&self, key: ZobristHash) -> Option<LockLessValue> {
+        let index = key.0 as usize % self.buckets.len();
         if self.buckets[index].value.0 != 0 && self.buckets[index].key.0 ^ self.buckets[index].value.0 == key.0 {
             return Some(self.buckets[index].value);
         }
         None
     }
 
-    fn new() -> Self {
+    pub fn new(size: usize) -> Self {
         LockLessTransTable {
-            buckets: [LockLessEntry::default(); SIZE],
+            buckets: [LockLessEntry::default(); TRANS_TABLE_SIZE],
         }
     }
 }
 
-unsafe impl<const SIZE: usize> Sync for LockLessTransTable<SIZE> {}
+unsafe impl Sync for LockLessTransTable {}
 
 #[derive(Copy, Clone, Default)]
 struct LockLessEntry {
@@ -37,11 +39,27 @@ struct LockLessEntry {
 }
 
 #[derive(Copy, Clone, Default)]
-struct LockLessValue(pub u64);
+pub struct LockLessValue(pub u64);
 
 impl LockLessValue {
     pub fn new(r#move: Move, flag: LockLessFlag, value: Eval, depth: u8) -> Self {
         LockLessValue((value + INFINITY) as u64 | (depth as u64) << 16 | (flag as u64) << 23 | (r#move.0 as u64) << 25)
+    }
+
+    pub fn value(&self) -> Eval {
+        (self.0 & 0xFFFF) as Eval - INFINITY
+    }
+
+    pub fn depth(&self) -> u8 {
+        ((self.0 >> 16) & 0x3F) as u8
+    }
+
+    pub fn flag(&self) -> LockLessFlag {
+        ((self.0 >> 23) & 0x3).into()
+    }
+
+    pub fn best_move(&self) -> Move {
+        Move((self.0 >> 25) as u32)
     }
 }
 
@@ -58,6 +76,17 @@ impl From<LockLessFlag> for u64 {
             LockLessFlag::Alpha => 0,
             LockLessFlag::Beta => 1,
             LockLessFlag::Exact => 2,
+        }
+    }
+}
+
+impl From<u64> for LockLessFlag {
+    fn from(value: u64) -> Self {
+        match value {
+            0 => LockLessFlag::Alpha,
+            1 => LockLessFlag::Beta,
+            2 => LockLessFlag::Exact,
+            _ => unreachable!(),        
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG};
 use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE};
-use crate::search::Eval;
+use crate::smpsearch::Eval;
 use crate::bitboard::{Bitboard, Square};
 use crate::r#move::{Move, CastlingSide, self};
 use crate::uci::algebraic_to_index;

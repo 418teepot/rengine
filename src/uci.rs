@@ -3,16 +3,17 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::io::stdout;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
+use crate::lockless::LockLessTransTable;
+use crate::smpsearch::SearchProtocol;
+use crate::smpsearch::UciMode;
+use crate::smpsearch::search;
 
 use crate::gamestate::GameState;
-use crate::search::Eval;
-use crate::search::SearchInfo;
-use crate::search::iterative_deepening;
+use crate::smpsearch::Eval;
 use crate::tt::TranspositionTable;
 use crate::r#move::Move;
 use std::io::stdin;
@@ -21,8 +22,9 @@ const ENGINE_NAME: &str = "engine";
 
 pub fn uci_loop() {
     let mut gamestate = GameState::new_starting_pos();
-    let mut search: Option<JoinHandle<(Move, Eval)>> = None;
+    let mut search: Option<JoinHandle<()>> = None;
     let stop_flag = Arc::new(SyncUnsafeCell::new(false));
+    let trans_table = Arc::new(SyncUnsafeCell::new(LockLessTransTable::new(0)));
     loop {
         let mut input = String::new();
         stdin().read_line(&mut input).expect("Couldn't read string");
@@ -43,12 +45,12 @@ pub fn uci_loop() {
                             let stop_flag_mut = stop_flag.get();
                             *stop_flag_mut = false;
                         }
-                        search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag));
+                        search = Some(cmd_go(&parts[1..], gamestate.clone(), Arc::clone(&stop_flag), Arc::clone(&trans_table)));
                     }
                 } else {
                     unsafe {
                         *stop_flag.get() = false;
-                        search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag));
+                        search = Some(cmd_go(&parts[1..], gamestate.clone(), Arc::clone(&stop_flag), Arc::clone(&trans_table)));
                     }
                 }
             },
@@ -59,6 +61,9 @@ pub fn uci_loop() {
             "stop" => {
                 unsafe {
                     *stop_flag.get() = true;
+                    if let Some(handle) = search {
+                        handle.join();
+                    }
                     search = None;
                 }
             },
@@ -76,7 +81,7 @@ pub fn uci_loop() {
     }
 }
 
-pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>) -> std::thread::JoinHandle<(Move, Eval)> {
+pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: Arc<SyncUnsafeCell<bool>>, trans_table: Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<()> {
     let mut part_index = 0;
     let mut settings: HashMap<String, i64> = HashMap::new();
     let mut is_infinite = false;
@@ -89,22 +94,21 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
         settings.insert(parts[part_index].to_string(), parts[part_index + 1].parse().unwrap());
         part_index += 2;
     }
-    let mut gamestate = gamestate;
     let wtime = *settings.get("wtime").unwrap_or(&0) as u64;
     let btime = *settings.get("btime").unwrap_or(&0) as u64;
-    let stop_flag_clone = Arc::clone(stop_flag);
+    let stop_flag_clone = Arc::clone(&stop_flag);
     let search = if is_infinite {
         thread::spawn(move || {
-            iterative_deepening::<true>(&mut gamestate, Duration::from_secs(86400), &mut SearchInfo::new(Instant::now()), &stop_flag_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(8, Duration::from_micros(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            iterative_deepening::<true>(&mut gamestate, Duration::from_millis(movetime as u64), &mut SearchInfo::new(Instant::now()), &stop_flag_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(8, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime);
         thread::spawn(move || {
-            iterative_deepening::<true>(&mut gamestate, Duration::from_millis(move_time), &mut SearchInfo::new(Instant::now()), &stop_flag_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(8, Duration::from_millis(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
         })
     };
     

@@ -1,4 +1,4 @@
-use crate::{zobrist::ZobristHash, search::Eval, r#move::Move};
+use crate::{zobrist::ZobristHash, smpsearch::Eval, r#move::Move};
 
 #[derive(Debug, Default, Clone)]
 pub struct TranspositionTable {

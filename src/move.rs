@@ -1,6 +1,5 @@
 use crate::bitboard::Square;
 use crate::gamestate::{Piece, PAWN, KING, NUM_OF_PIECES, GameState, WHITE, QUEEN, ROOK, KNIGHT, BISHOP, G1, E1, C1, E8, G8, C8};
-use crate::search::Eval;
 use crate::uci::algebraic_to_index;
 use std::ops::BitOr;
 

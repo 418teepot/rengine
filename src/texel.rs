@@ -2,8 +2,8 @@ use std::{time::{Duration, Instant}, sync::{Arc, Mutex}, fs::File, io::Write, ar
 
 use rand::{distributions::WeightedIndex, thread_rng, prelude::*};
 
-use crate::{gamestate::GameState, search::{SearchInfo, iterative_deepening, INFINITY, eval_into_white_viewpoint, Eval}, book::OPENING_BOOK, r#move::Move};
-
+use crate::{gamestate::{GameState, BLACK, Side}, book::OPENING_BOOK, r#move::Move, smpsearch::{Eval, iterative_deepening, SearchProtocol, search}, lockless::LockLessTransTable};
+/* 
 pub fn generate_texel_sample(samples: u32, movetime: Duration) -> String {
     let mut texel_samples = String::new();
     let mut file = File::create("resources/texel.txt").unwrap();
@@ -21,8 +21,8 @@ pub fn texel_game(movetime: Duration) -> String {
     let mut gamestate = GameState::new_starting_pos();
     let mut eval: Eval = 0;
     while !gamestate.is_game_over() {
-        let mut search_info = SearchInfo::new(Instant::now());
-        let stop_flag = Arc::new(Mutex::new(false));
+        let stop_flag = Arc::new(SyncUnsafeCell::new(false));
+        let trans_table = Arc::new(SyncUnsafeCell::new(LockLessTransTable::new(0)));
         if let Some(entry) = OPENING_BOOK.get(&gamestate.to_reduced_book_fen()) {
             let moves: Vec<String> = entry.iter().map(|item| item.0.to_string()).collect();
             let weights: Vec<u32> = entry.iter().map(|item| item.1).collect(); 
@@ -35,7 +35,7 @@ pub fn texel_game(movetime: Duration) -> String {
         }
         fen_record.push_str(&gamestate.to_reduced_book_fen());
         fen_record.push('\n');
-        let result_tuple = iterative_deepening::<false>(&mut gamestate, movetime, &mut search_info, &Arc::new(SyncUnsafeCell::new(false)));
+        let result_tuple = search(1, movetime, gamestate.clone(), Arc::clone(&stop_flag), 20, trans_table);
         let r#move = result_tuple.0;
         eval = result_tuple.1;
         gamestate.apply_legal_move(r#move);
@@ -64,3 +64,12 @@ pub fn texel_game(movetime: Duration) -> String {
     }
     final_record
 }
+
+pub fn eval_into_white_viewpoint(value: Eval, side_to_move: Side) -> f64 {
+    if side_to_move == BLACK {
+        -value as f64 / 100_f64
+    } else {
+        value as f64 / 100_f64
+    }
+} 
+*/

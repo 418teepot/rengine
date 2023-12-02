@@ -1,4 +1,6 @@
 #![feature(sync_unsafe_cell)]
+#![feature(adt_const_params)]
+#![feature(let_chains)]
 
 use std::cell::SyncUnsafeCell;
 use std::env;
@@ -7,8 +9,6 @@ use std::time::Duration;
 use book::OPENING_BOOK;
 use gamestate::GameState;
 use movegen::RAY_FROM_TO;
-use texel::texel_game;
-use crate::texel::generate_texel_sample;
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
 

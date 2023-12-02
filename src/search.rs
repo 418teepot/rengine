@@ -1,3 +1,5 @@
+
+/*
 use std::cell::{UnsafeCell, SyncUnsafeCell};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -107,7 +109,7 @@ pub fn iterative_deepening<const UCI_MODE: bool>(state: &mut GameState, max_time
         let iteration_start = Instant::now();
         let (candidate_move, candidate_eval) = pick_best_move_timed(state, depth, search_info, stop_flag, best_move);
         unsafe {
-            let stop_flag_ptr = stop_flag.get();
+            let stop_flag_ptr: *mut bool = stop_flag.get();
             if search_info.time_over() || *stop_flag_ptr {
                 if best_move == Move::new_from_to(0, 0, 0) {
                     panic!();
@@ -407,6 +409,7 @@ const MVV_LVA_VALUE: u32 = u32::MAX - 1000;
 const KILLER_VALUE: u32 = MVV_LVA_VALUE - 1000;
 const SECONDARY_KILLER_VALUE: u32 = KILLER_VALUE - 1000;
 
+
 impl MoveList {
     pub fn value_moves(&mut self, search_info: &mut SearchInfo, depth: u8, side_to_move: Side) {
         for move_index in 0..self.length {
@@ -451,3 +454,4 @@ impl MoveList {
         self.moves[index2 as usize] = temp_move;
     }
 }
+*/
