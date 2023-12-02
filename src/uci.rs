@@ -41,16 +41,12 @@ pub fn uci_loop() {
             "go" => {
                 if let Some(ref thread) = search {
                     if thread.is_finished() {
-                        unsafe {
-                            let stop_flag_mut = stop_flag.get();
-                            *stop_flag_mut = false;
-                        }
-                        search = Some(cmd_go(&parts[1..], gamestate.clone(), Arc::clone(&stop_flag), Arc::clone(&trans_table)));
+                        search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag, &trans_table));
                     }
                 } else {
                     unsafe {
-                        *stop_flag.get() = false;
-                        search = Some(cmd_go(&parts[1..], gamestate.clone(), Arc::clone(&stop_flag), Arc::clone(&trans_table)));
+                        *stop_flag.get() = true;
+                        search = Some(cmd_go(&parts[1..], gamestate.clone(), &stop_flag, &trans_table));
                     }
                 }
             },
@@ -62,7 +58,7 @@ pub fn uci_loop() {
                 unsafe {
                     *stop_flag.get() = true;
                     if let Some(handle) = search {
-                        handle.join();
+                        handle.join().unwrap();
                     }
                     search = None;
                 }
@@ -81,7 +77,7 @@ pub fn uci_loop() {
     }
 }
 
-pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: Arc<SyncUnsafeCell<bool>>, trans_table: Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<()> {
+pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>, trans_table: &Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<()> {
     let mut part_index = 0;
     let mut settings: HashMap<String, i64> = HashMap::new();
     let mut is_infinite = false;
@@ -96,19 +92,23 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: Arc<SyncUnsafeCel
     }
     let wtime = *settings.get("wtime").unwrap_or(&0) as u64;
     let btime = *settings.get("btime").unwrap_or(&0) as u64;
-    let stop_flag_clone = Arc::clone(&stop_flag);
+    let stop_flag_clone = Arc::clone(stop_flag);
+    let trans_table_clone = Arc::clone(trans_table);
+    unsafe {
+        *stop_flag_clone.get() = false;
+    }
     let search = if is_infinite {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(1, Duration::from_micros(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(4, Duration::from_micros(0), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(4, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime);
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(0), gamestate, stop_flag_clone, 20, Arc::clone(&trans_table))
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(4, Duration::from_millis(move_time), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     };
     

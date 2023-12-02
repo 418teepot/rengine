@@ -43,7 +43,7 @@ pub struct LockLessValue(pub u64);
 
 impl LockLessValue {
     pub fn new(r#move: Move, flag: LockLessFlag, value: Eval, depth: u8) -> Self {
-        LockLessValue((value + INFINITY) as u64 | (depth as u64) << 16 | (flag as u64) << 23 | (r#move.0 as u64) << 25)
+        LockLessValue((value + INFINITY) as u64  | (depth as u64) << 16 | (flag as u64) << 23 | (r#move.0 as u64) << 25)
     }
 
     pub fn value(&self) -> Eval {

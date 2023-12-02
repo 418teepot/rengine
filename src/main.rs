@@ -7,8 +7,11 @@ use std::env;
 use std::time::Duration;
 
 use book::OPENING_BOOK;
-use gamestate::GameState;
+use gamestate::{GameState, ROOK};
+use lockless::{LockLessTransTable, LockLessValue};
 use movegen::RAY_FROM_TO;
+use r#move::Move;
+use smpsearch::INFINITY;
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
 
@@ -49,9 +52,12 @@ fn main() {
     let texel_record = generate_texel_sample(64_000, Duration::from_millis(60));
     println!("{}", texel_record);
     */
-    /* 
+    /*  
     let gs = GameState::new_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1");
     let static_eval = gs.static_eval();
-    println!("{}", static_eval);
+    let mut trans_table = LockLessTransTable::new(0);
+    trans_table.insert(gs.zobrist, LockLessValue::new(Move::new_from_to(0, 1, ROOK), lockless::LockLessFlag::Exact, -INFINITY, 10));
+    let entry = trans_table.get(gs.zobrist).unwrap();
+    println!("{} {} {}", entry.best_move().to_algebraic(), entry.depth(), entry.value());
     */
 }
