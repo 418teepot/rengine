@@ -9,10 +9,10 @@ use rand::prelude::*;
 const MAX_SEARCH_DEPTH: u8 = 30;
 const MAX_KILLER_MOVES: usize = 2;
 const MAX_QUIESCENT_DEPTH: u8 = 10;
-
+const MAX_CHECK_EXTENSIONS: u8 = 8;
 pub type Eval = i32;
 
-const NULLMOVE: Move = Move(0);
+pub const NULLMOVE: Move = Move(0);
 
 pub const INFINITY: Eval = 30_000;
 
@@ -69,6 +69,7 @@ impl KillerTable {
 #[derive(ConstParamTy, PartialEq, Eq)]
 pub enum SearchProtocol {
     Uci(UciMode),
+    Texel,
     Debug,
 }
 
@@ -78,7 +79,7 @@ pub enum UciMode {
     Movetime,
 }
 
-pub fn search<const SEARCHMODE: SearchProtocol>(threads: usize, max_time: Duration, state: GameState, stop_flag: Arc<SyncUnsafeCell<bool>>, max_depth: u8, trans_table: Arc<SyncUnsafeCell<LockLessTransTable>>) {
+pub fn search<const SEARCHMODE: SearchProtocol>(threads: usize, max_time: Duration, state: GameState, stop_flag: Arc<SyncUnsafeCell<bool>>, max_depth: u8, trans_table: Arc<SyncUnsafeCell<LockLessTransTable>>) -> (Move, Eval) {
     if let Some(entry) = OPENING_BOOK.get(&state.to_reduced_book_fen()) {
             
         let moves: Vec<String> = entry.iter().map(|item| item.0.to_string()).collect();
@@ -86,13 +87,15 @@ pub fn search<const SEARCHMODE: SearchProtocol>(threads: usize, max_time: Durati
         let dist = WeightedIndex::new(weights).unwrap();
         let mut rng = thread_rng();
         let r#move = moves[dist.sample(&mut rng)].to_string();
-        println!("bestmove {}", r#move);
-
+        if let SearchProtocol::Uci(_) = SEARCHMODE {
+            println!("bestmove {}", r#move);
+        }
+        
         unsafe {
             let stop_flag_ptr = stop_flag.get();
             *stop_flag_ptr = true;
         }
-        return;
+        return (Move::from_text_move(&state, &r#move), 0);
     }
     
     let mut thread_pool = vec![];
@@ -108,15 +111,14 @@ pub fn search<const SEARCHMODE: SearchProtocol>(threads: usize, max_time: Durati
                 thread_num: thread,
                 search_info: SearchInfo::new(max_time, stop_flag_clone)
             };
-            iterative_deepening::<SEARCHMODE>(thread_data);
+            iterative_deepening::<SEARCHMODE>(thread_data)
         }));
     }
+    let mut results = Vec::new();
     for thread in thread_pool {
-        thread.join().unwrap();
+        results.push(thread.join().unwrap());
     }
-    unsafe {
-    assert!(*stop_flag.get())
-    }
+    results[0]
 }
 
 fn extract_pv(state: &mut GameState, t_table: *mut LockLessTransTable) -> String {
@@ -147,31 +149,32 @@ pub fn iterative_deepening<const SEARCHMODE: SearchProtocol>(mut thread_data: Th
     let mut best_eval: i32 = -INFINITY;
     for depth in 0..thread_data.max_depth {
         thread_data.search_info.search_depth = depth;
-        let score = unsafe {
-            alpha_beta::<SEARCHMODE>(-INFINITY, INFINITY, &mut thread_data.state, depth, &mut thread_data.search_info, thread_data.trans_table.get(), true)
-        };
+        let score = alpha_beta::<SEARCHMODE>(-INFINITY, INFINITY, &mut thread_data.state, depth, &mut thread_data.search_info, thread_data.trans_table.get(), true, 0);
+        
         // If the search stopped prematurely we want to not return the value of it so we break
         unsafe {
-            if (SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) && thread_data.search_info.time_over()) || *thread_data.search_info.stop_flag.get() {
+            if ((SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) || SEARCHMODE == SearchProtocol::Texel) && thread_data.search_info.time_over()) || *thread_data.search_info.stop_flag.get() {
                 break;
             }
         }
         best_eval = score;
         best_move = thread_data.search_info.best_move;
         if let SearchProtocol::Uci(_) = SEARCHMODE && thread_data.thread_num == 0 {
-            println!("info depth {} cp {} pv {}", depth, best_eval, extract_pv(&mut thread_data.state, thread_data.trans_table.get()));
+            println!("info depth {} eval cp {} pv {}", depth, best_eval, extract_pv(&mut thread_data.state, thread_data.trans_table.get()));
         }
     }
     if thread_data.thread_num == 0 {
         unsafe {
             *thread_data.search_info.stop_flag.get() = true;
         }
-        println!("bestmove {}", best_move.to_algebraic());      
+        if let SearchProtocol::Uci(_) = SEARCHMODE {
+            println!("bestmove {}", best_move.to_algebraic());
+        }
     }
     (best_move, best_eval)
 }
 
-fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: &mut GameState, depth: u8, search_info: &mut SearchInfo, trans_table: *mut LockLessTransTable, do_null: bool) -> Eval {
+fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: &mut GameState, depth: u8, search_info: &mut SearchInfo, trans_table: *mut LockLessTransTable, do_null: bool, check_extensions: u8) -> Eval {
     if depth == 0 {
         return quiescent_search::<SEARCHMODE>(state, alpha, beta, MAX_QUIESCENT_DEPTH, search_info)
     }
@@ -181,9 +184,12 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
     }
 
     let mut depth = depth;
+    let mut check_extensions = check_extensions;
     let in_check = state.is_in_check();
-    if in_check {
+    
+    if in_check && check_extensions <= MAX_CHECK_EXTENSIONS {
         depth += 1;
+        check_extensions += 1;
     }
 
     let mut alpha = alpha;
@@ -219,7 +225,7 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
     // Null-Move heuristic
     if do_null && depth >= 4 && !in_check && state.phase() <= 220 && state.plys != 0 {
         state.make_null_move();
-        let null_move_value = -alpha_beta::<SEARCHMODE>(-beta, -beta + 1, state, depth - 4, search_info, trans_table, false);
+        let null_move_value = -alpha_beta::<SEARCHMODE>(-beta, -beta + 1, state, depth - 4, search_info, trans_table, false, check_extensions);
         state.undo_null_move();
         if null_move_value >= beta && null_move_value.abs() < INFINITY {
             return beta;
@@ -252,18 +258,18 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
         legals += 1;
         let value = if depth > 3 && legals > 3 && !r#move.is_capture() && !r#move.is_promotion() && !in_check && search_info.killer_table.is_killer(depth, r#move).is_none() {
             let reduction = if legals > 6 { 2 } else { 1 };
-            let tmp_value = -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1 - reduction, search_info, trans_table, true);
+            let tmp_value = -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1 - reduction, search_info, trans_table, true, check_extensions);
             if tmp_value > alpha {
-                -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1, search_info, trans_table, true)
+                -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1, search_info, trans_table, true, check_extensions)
             } else {
                 tmp_value
             }
         } else {
-            -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1, search_info, trans_table, true)
+            -alpha_beta::<SEARCHMODE>(-beta, -alpha, state, depth - 1, search_info, trans_table, true, check_extensions)
         };
         state.undo_move();
         unsafe {
-            if (SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) && search_info.time_over()) {
+            if (SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) || SEARCHMODE == SearchProtocol::Texel) && search_info.time_over() {
                 return alpha;
             }
             if *search_info.stop_flag.get() {
@@ -273,7 +279,6 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
         if value > best_value {
             best_value = value;
             best_move = r#move;
-            assert!(best_move != NULLMOVE);
             if value > alpha {
                 if value >= beta {
 
@@ -301,18 +306,27 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
             return -INFINITY;
         } 
         else {
-            return 1;
+            return 0;
         }
     }
 
-    if best_move != NULLMOVE {
+    // If all moves suck the same we just give back the first viable move as the best move.
+    if best_move == NULLMOVE {
+        for index in 0..moves.length {
+            if state.apply_pseudo_legal_move(moves.moves[index as usize]) {
+                state.undo_move();
+                best_move = moves.moves[index as usize];
+                break;
+            }
+        }
+    }
+
     unsafe {
         if alpha != original_alpha {
             (*trans_table).insert(state.zobrist, LockLessValue::new(best_move, LockLessFlag::Exact, best_value, depth));
         } else {
             (*trans_table).insert(state.zobrist, LockLessValue::new(best_move, LockLessFlag::Alpha, best_value, depth));
         }
-    }
     }
 
     
@@ -322,7 +336,6 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
 }
 
 fn quiescent_search<const SEARCHMODE: SearchProtocol>(state: &mut GameState, alpha: Eval, beta: Eval, depth: u8, search_info: &mut SearchInfo) -> Eval {
-    
     
     if state.has_repitition() || state.fifty_move_rule >= 100 {
         return alpha;
@@ -351,7 +364,7 @@ fn quiescent_search<const SEARCHMODE: SearchProtocol>(state: &mut GameState, alp
         let score = -quiescent_search::<SEARCHMODE>(state, -beta, -alpha, depth - 1, search_info);
         state.undo_move();
         unsafe {
-            if (SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) && search_info.time_over()) || *search_info.stop_flag.get() {
+            if ((SEARCHMODE == SearchProtocol::Uci(UciMode::Movetime) || SEARCHMODE == SearchProtocol::Texel) && search_info.time_over()) || *search_info.stop_flag.get() {
                 return alpha;
             }
         }

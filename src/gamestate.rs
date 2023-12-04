@@ -1,6 +1,6 @@
 use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG};
 use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE};
-use crate::smpsearch::Eval;
+use crate::smpsearch::{Eval, NULLMOVE};
 use crate::bitboard::{Bitboard, Square};
 use crate::r#move::{Move, CastlingSide, self};
 use crate::uci::algebraic_to_index;
@@ -207,10 +207,7 @@ impl GameState {
     }
 
     pub fn apply_legal_move(&mut self, r#move: Move) {
-        if r#move == Move::new_from_to(0, 0, 0) {
-            self.dump_panic_debug();
-            panic!("Lol");
-        }
+        assert!(r#move != NULLMOVE);
         self.history.push(History { r#move, en_passant: self.en_passant_board, fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist });
         let from = r#move.from();
         let to = r#move.to();

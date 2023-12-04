@@ -22,7 +22,7 @@ const ENGINE_NAME: &str = "engine";
 
 pub fn uci_loop() {
     let mut gamestate = GameState::new_starting_pos();
-    let mut search: Option<JoinHandle<()>> = None;
+    let mut search: Option<JoinHandle<(Move, Eval)>> = None;
     let stop_flag = Arc::new(SyncUnsafeCell::new(false));
     let trans_table = Arc::new(SyncUnsafeCell::new(LockLessTransTable::new(0)));
     loop {
@@ -77,7 +77,7 @@ pub fn uci_loop() {
     }
 }
 
-pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>, trans_table: &Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<()> {
+pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>, trans_table: &Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<(Move, Eval)> {
     let mut part_index = 0;
     let mut settings: HashMap<String, i64> = HashMap::new();
     let mut is_infinite = false;
@@ -99,16 +99,16 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
     }
     let search = if is_infinite {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(4, Duration::from_micros(0), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(1, Duration::from_micros(0), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(4, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime);
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(4, Duration::from_millis(move_time), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(move_time), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     };
     
