@@ -593,11 +593,11 @@ impl GameState {
         f(x) = ax + b
         f(0) = 40
         40 = a * 0 + b
-        b = 40
-        f(256) = 5
-        5 = a * 256 + 40 | -40
-        -35 = a * 256    | / 256
-        -35/256 = a
+        b = 55
+        f(256) = 15
+        15 = a * 256 + 55 | -55
+        -40 = a * 256    | / 256
+        -40/256 = a
         */
         (if self.side_to_move() == WHITE {
             wtime
@@ -607,7 +607,7 @@ impl GameState {
     }
 
     fn moves_left(&self) -> u16 {
-        ((self.phase() as f64) * (-35.0_f64 / 256.0_f64) + 40.0_f64) as u16
+        ((self.phase() as f64) * (-40.0_f64 / 256.0_f64) + 55.0_f64) as u16
     }
 
     fn mobility_area(&self, side: Side) -> Bitboard {
