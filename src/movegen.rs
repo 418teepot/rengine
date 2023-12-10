@@ -860,7 +860,7 @@ lazy_static! {
                         break;
                     }
                     bitmask |= 1 << current_square;
-                    if current_square == to.try_into().unwrap() {
+                    if current_square == i8::try_from(to).unwrap() {
                         return bitmask;
                     }
                     i += 1;

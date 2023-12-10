@@ -31,12 +31,11 @@ pub struct SearchInfo {
     history_table: [[[u32; NUM_OF_SQUARES]; NUM_OF_SQUARES]; NUM_OF_PLAYERS],
     stop_flag: Arc<SyncUnsafeCell<bool>>,
     search_depth: u8,
-    best_move: Move,
 }
 
 impl SearchInfo {
     fn new(max_time: Duration, stop_flag: Arc<SyncUnsafeCell<bool>>) -> Self {
-        SearchInfo { start_time: Instant::now(), max_time, killer_table: Default::default(), history_table: [[[0; NUM_OF_SQUARES]; NUM_OF_SQUARES]; NUM_OF_PLAYERS], stop_flag, search_depth: 0, best_move: NULLMOVE }
+        SearchInfo { start_time: Instant::now(), max_time, killer_table: Default::default(), history_table: [[[0; NUM_OF_SQUARES]; NUM_OF_SQUARES]; NUM_OF_PLAYERS], stop_flag, search_depth: 0 }
     }
 
     fn time_over(&self) -> bool {
@@ -118,36 +117,44 @@ pub fn search<const SEARCHMODE: SearchProtocol>(threads: usize, max_time: Durati
     for thread in thread_pool {
         results.push(thread.join().unwrap());
     }
+    assert!(results[0].0 != NULLMOVE);
+    unsafe {
+        (*trans_table.get()).advance_age()
+    }
     results[0]
 }
 
-fn extract_pv(state: &mut GameState, t_table: *mut LockLessTransTable) -> String {
-    let mut pv_string = String::new();
-    
+fn extract_pv(state: &GameState, t_table: *mut LockLessTransTable) -> Vec<Move> {
+    let mut moves = Vec::new();
     let mut copy_state = state.clone();
-
     unsafe {
-    let mut depth = 0;
-    while let Some(entry) = (*t_table).get(copy_state.zobrist) {
-        if depth > entry.depth() {
-            break;
+        let mut depth = 0;
+        while let Some(entry) = (*t_table).get(copy_state.zobrist) {
+            if depth > entry.depth() {
+                break;
+            }
+            let pvmove = entry.best_move();
+            moves.push(pvmove);
+            copy_state.apply_legal_move(pvmove);
+            depth += 1;
         }
-        let pvmove = entry.best_move();
-        pv_string.push_str(&format!("{} ", pvmove.to_algebraic()));
-        copy_state.apply_legal_move(pvmove);
-        depth += 1;
-    }
     }
 
-    pv_string
+    moves
 }
 
+fn pv_to_string(pv: &Vec<Move>) -> String {
+    let mut string = String::new();
+    for p in pv {
+        string.push_str(&format!("{} ", p.to_algebraic()));
+    }
+    string
+}
 
 pub fn iterative_deepening<const SEARCHMODE: SearchProtocol>(mut thread_data: ThreadData) -> (Move, Eval) {
-    thread_data.search_info.best_move = NULLMOVE;
     let mut best_move = NULLMOVE;
     let mut best_eval: i32 = -INFINITY;
-    for depth in 0..thread_data.max_depth {
+    for depth in 1..thread_data.max_depth {
         thread_data.search_info.search_depth = depth;
         let score = alpha_beta::<SEARCHMODE>(-INFINITY, INFINITY, &mut thread_data.state, depth, &mut thread_data.search_info, thread_data.trans_table.get(), true, 0);
         
@@ -158,9 +165,11 @@ pub fn iterative_deepening<const SEARCHMODE: SearchProtocol>(mut thread_data: Th
             }
         }
         best_eval = score;
-        best_move = thread_data.search_info.best_move;
+        let pv = extract_pv(&thread_data.state, thread_data.trans_table.get());
+        best_move = pv[0];
         if let SearchProtocol::Uci(_) = SEARCHMODE && thread_data.thread_num == 0 {
-            println!("info depth {} eval cp {} pv {}", depth, best_eval, extract_pv(&mut thread_data.state, thread_data.trans_table.get()));
+            let pv_string = pv_to_string(&pv);
+            println!("info depth {} score cp {} pv {}", depth, best_eval, pv_string);
         }
     }
     if thread_data.thread_num == 0 {
@@ -201,7 +210,6 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
         if let Some(entry) = (*trans_table).get(state.zobrist) {
             pvmove = entry.best_move();
             assert!(pvmove != NULLMOVE);
-            search_info.best_move = pvmove;
             if entry.depth() >= depth {
                 match entry.flag() {
                     LockLessFlag::Alpha => {
@@ -287,6 +295,7 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
                     }
 
                     unsafe {
+                        assert!(best_move != NULLMOVE);
                         (*trans_table).insert(state.zobrist, LockLessValue::new(best_move, LockLessFlag::Beta, beta, depth))
                     }
 
@@ -321,6 +330,7 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
         }
     }
 
+    assert!(best_move != NULLMOVE);
     unsafe {
         if alpha != original_alpha {
             (*trans_table).insert(state.zobrist, LockLessValue::new(best_move, LockLessFlag::Exact, best_value, depth));
@@ -328,9 +338,6 @@ fn alpha_beta<const SEARCHMODE: SearchProtocol>(alpha: Eval, beta: Eval, state: 
             (*trans_table).insert(state.zobrist, LockLessValue::new(best_move, LockLessFlag::Alpha, best_value, depth));
         }
     }
-
-    
-    search_info.best_move = best_move;
 
     alpha
 }

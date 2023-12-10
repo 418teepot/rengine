@@ -6,13 +6,21 @@ const TRANS_TABLE_SIZE: usize = 1_000_000;
 
 pub struct LockLessTransTable {
     buckets: [LockLessEntry; TRANS_TABLE_SIZE],
+    ages: [u8; TRANS_TABLE_SIZE],
+    current_age: u8,
 }
 
 impl LockLessTransTable {
     pub fn insert(&mut self, key: ZobristHash, value: LockLessValue) {
         let index = key.0 as usize % self.buckets.len();
-        self.buckets[index].key = ZobristHash(key.0 ^ value.0);
-        self.buckets[index].value = value;
+        let old_val = self.buckets[index];
+        if old_val.key.0 == 0
+        || self.ages[index] < self.current_age
+        || old_val.value.depth() <= value.depth() {
+            self.buckets[index].key = ZobristHash(key.0 ^ value.0);
+            self.buckets[index].value = value;
+            self.ages[index] = self.current_age;
+        }
     }
 
     pub fn get(&self, key: ZobristHash) -> Option<LockLessValue> {
@@ -23,10 +31,24 @@ impl LockLessTransTable {
         None
     }
 
-    pub fn new(size: usize) -> Self {
+    pub fn new() -> Self {
         LockLessTransTable {
             buckets: [LockLessEntry::default(); TRANS_TABLE_SIZE],
+            ages: [0; TRANS_TABLE_SIZE],
+            current_age: 0,
         }
+    }
+
+    pub fn clear(&mut self) {
+        for i in 0..TRANS_TABLE_SIZE {
+            self.buckets[i] = Default::default();
+            self.ages[i] = 0;
+        }
+        self.current_age = 0;
+    }
+
+    pub fn advance_age(&mut self) {
+        self.current_age += 1;
     }
 }
 
