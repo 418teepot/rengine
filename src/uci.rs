@@ -111,6 +111,8 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
     }
     let wtime = *settings.get("wtime").unwrap_or(&0) as u64;
     let btime = *settings.get("btime").unwrap_or(&0) as u64;
+    let winc = settings.get("winc").map(|&v| (v as u64).clone());
+    let binc = settings.get("binc").map(|&v| (v as u64).clone());
     let stop_flag_clone = Arc::clone(stop_flag);
     let trans_table_clone = Arc::clone(trans_table);
     unsafe {
@@ -125,7 +127,7 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
             search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(3, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, trans_table_clone)
         })
     } else {
-        let move_time = gamestate.calculate_movetime(wtime, btime);
+        let move_time = gamestate.calculate_movetime(wtime, btime, winc, binc);
         thread::spawn(move || {
             search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(3, Duration::from_millis(move_time), gamestate, stop_flag_clone, 20, trans_table_clone)
         })

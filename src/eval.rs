@@ -588,7 +588,7 @@ impl GameState {
         }
     }
 
-    pub fn calculate_movetime(&self, wtime: u64, btime: u64) -> u64 {
+    pub fn calculate_movetime(&self, wtime: u64, btime: u64, winc: Option<u64>, binc: Option<u64>) -> u64 {
         /* 
         f(x) = ax + b
         f(0) = 40
@@ -599,11 +599,29 @@ impl GameState {
         -40 = a * 256    | / 256
         -40/256 = a
         */
-        (if self.side_to_move() == WHITE {
-            wtime
+        let moves_left = self.moves_left() as u64;
+        let time_left = if self.side_to_move() == WHITE {
+            match winc {
+                None => wtime,
+                Some(inc) => wtime + (inc * moves_left),
+            }
         } else {
-            btime
-        }) / self.moves_left() as u64
+            match binc {
+                None => btime,
+                Some(inc) => btime + (inc * moves_left),
+            }
+        };
+        let raw_time_left = time_left / moves_left;
+        ((raw_time_left as f64) * self.midgame_scale()) as u64
+    }
+
+    fn midgame_scale(&self) -> f64 {
+        let scale =  -0.00006_f64 * ((self.phase() as f64 - 64_f64) * (self.phase() as f64 - 64_f64)) + 1.4_f64;
+        if scale < 0.6_f64 {
+            0.6_f64
+        } else {
+            scale
+        }
     }
 
     fn moves_left(&self) -> u16 {

@@ -185,7 +185,7 @@ impl Move {
             if let Some((_, captured_piece)) = piece_to {
                 return Move::new_capture_promotion(from, to, promoted_piece, captured_piece)
             } else {
-                return Move::new_quiet_promotion(from, to, piece_from)
+                return Move::new_quiet_promotion(from, to, promoted_piece)
             }
         }
         if piece_from == PAWN && to == gamestate.en_passant_board.next_piece_index() {
