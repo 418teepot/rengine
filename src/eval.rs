@@ -589,16 +589,6 @@ impl GameState {
     }
 
     pub fn calculate_movetime(&self, wtime: u64, btime: u64, winc: Option<u64>, binc: Option<u64>) -> u64 {
-        /* 
-        f(x) = ax + b
-        f(0) = 40
-        40 = a * 0 + b
-        b = 55
-        f(256) = 15
-        15 = a * 256 + 55 | -55
-        -40 = a * 256    | / 256
-        -40/256 = a
-        */
         let moves_left = self.moves_left() as u64;
         let time_left = if self.side_to_move() == WHITE {
             match winc {
