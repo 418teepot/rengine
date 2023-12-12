@@ -1,6 +1,8 @@
 #![feature(sync_unsafe_cell)]
 #![feature(adt_const_params)]
 #![feature(let_chains)]
+#![feature(lazy_cell)]
+
 
 use std::cell::SyncUnsafeCell;
 use std::env;

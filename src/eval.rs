@@ -593,12 +593,12 @@ impl GameState {
         let time_left = if self.side_to_move() == WHITE {
             match winc {
                 None => wtime,
-                Some(inc) => wtime + (inc * moves_left),
+                Some(inc) => wtime + ((inc * moves_left) / 2),
             }
         } else {
             match binc {
                 None => btime,
-                Some(inc) => btime + (inc * moves_left),
+                Some(inc) => btime + ((inc * moves_left) / 2),
             }
         };
         let raw_time_left = time_left / moves_left;
