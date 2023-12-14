@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::fs::read_to_string;
 
+use crate::book_data;
+
 lazy_static! {
     pub static ref OPENING_BOOK: HashMap<String, Vec<(String, u32)>> = {
         let mut book = HashMap::new();
 
-        let book_file_contents = read_to_string("resources/book.txt").unwrap_or("".to_string());
+        let book_file_contents = book_data::BOOK_DATA;
         
         let mut pos_string: String = String::new();
         let mut moves = Vec::new();

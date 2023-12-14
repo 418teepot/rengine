@@ -1,4 +1,4 @@
-use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG};
+use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG, EVAL_PARAMS};
 use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE};
 use crate::smpsearch::{Eval, NULLMOVE};
 use crate::bitboard::{Bitboard, Square};
@@ -56,6 +56,7 @@ pub struct GameState {
     pub history: Vec<History>,
     // Eval
     pub material: [Eval; NUM_OF_PLAYERS],
+    pub material_eg: [Eval; NUM_OF_PLAYERS],
     pub psqt_mg: [Eval; NUM_OF_PLAYERS],
     pub phase: i16,
     pub psqt_eg: [Eval; NUM_OF_PLAYERS],
@@ -557,9 +558,12 @@ impl GameState {
     fn add_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].add_piece(square);
         self.zobrist.add_piece(square, piece, side);
-        self.material[side] += MATERIAL_VALUE[piece];
-        self.psqt_mg[side] += PSQT_MG[side][piece][square];
-        self.psqt_eg[side] += PSQT_EG[side][piece][square];
+        unsafe {
+            self.psqt_mg[side] += EVAL_PARAMS.psqt_mg[side][piece][square];
+            self.psqt_eg[side] += EVAL_PARAMS.psqt_eg[side][piece][square];
+            self.material[side] += EVAL_PARAMS.mg_piece_value[piece];
+            self.material_eg[side] += EVAL_PARAMS.eg_piece_value[piece];
+        }
         self.phase -= PHASE_WEIGHT[piece];
     }
 
@@ -567,9 +571,12 @@ impl GameState {
     fn remove_piece(&mut self, square: Square, piece: Piece, side: Side) {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
-        self.material[side] -= MATERIAL_VALUE[piece];
-        self.psqt_mg[side] -= PSQT_MG[side][piece][square];
-        self.psqt_eg[side] -= PSQT_EG[side][piece][square];
+        unsafe {
+            self.psqt_mg[side] -= EVAL_PARAMS.psqt_mg[side][piece][square];
+            self.psqt_eg[side] -= EVAL_PARAMS.psqt_eg[side][piece][square];
+            self.material[side] -= EVAL_PARAMS.mg_piece_value[piece];
+            self.material[side] -= EVAL_PARAMS.eg_piece_value[piece];
+        }
         self.phase += PHASE_WEIGHT[piece];
     }
 

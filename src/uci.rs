@@ -22,6 +22,7 @@ use crate::r#move::Move;
 use std::io::stdin;
 
 const ENGINE_NAME: &str = "engine";
+const AUTHOR_NAME: &str = "418teapot";
 
 pub fn uci_loop() {
     let mut gamestate = GameState::new_starting_pos();
@@ -93,7 +94,7 @@ pub fn run_debug_game(state: &GameState) {
         clone_state.apply_legal_move(best_move.0);
         println!("{} ", best_move.0.to_algebraic());
     }
-    println!("");
+    println!();
 }
 
 pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>, trans_table: &Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<(Move, Eval)> {
@@ -138,7 +139,7 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
 }
 
 pub fn cmd_uci(_parts: &[&str]) {
-    println!("id {}", ENGINE_NAME);
+    println!("id {} {}", ENGINE_NAME, AUTHOR_NAME);
     println!("uciok");
 }
 

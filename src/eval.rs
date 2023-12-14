@@ -334,6 +334,10 @@ impl GameState {
     pub fn static_eval(&self) -> Eval {
         let our_side = self.side_to_move();
         let enemy_side = our_side ^ 1;
+        // Is material draw?
+        if self.is_material_draw() {
+            return 0;
+        }
 
         // Material Value
         let mg_eval = self.mg_eval(our_side, enemy_side);
@@ -343,232 +347,53 @@ impl GameState {
         ((mg_eval * (256 - phase)) + (eg_eval * phase)) / 256
     }
 
+    fn is_material_draw(&self) -> bool {
+        if self.piece_boards[WHITE][ROOK].is_empty() && self.piece_boards[BLACK][ROOK].is_empty() && self.piece_boards[WHITE][QUEEN].is_empty() && self.piece_boards[BLACK][QUEEN].is_empty() {
+            if self.piece_boards[BLACK][BISHOP].is_empty() && self.piece_boards[WHITE][BISHOP].is_empty() {
+                if self.piece_boards[WHITE][KNIGHT].0.count_ones() < 3 && self.piece_boards[BLACK][KNIGHT].0.count_ones() < 3 { return true }
+            } else if self.piece_boards[WHITE][KNIGHT].is_empty() && self.piece_boards[BLACK][KNIGHT].is_empty() {
+               if (self.piece_boards[WHITE][BISHOP].0.count_ones() as i32 - self.piece_boards[BLACK][BISHOP].0.count_ones() as i32).abs() < 2 { return true }
+            } else if ((self.piece_boards[WHITE][KNIGHT].0.count_ones() < 3 && self.piece_boards[WHITE][BISHOP].is_empty()) || (self.piece_boards[WHITE][BISHOP].0.count_ones() == 1 && self.piece_boards[WHITE][KNIGHT].is_empty())) && ((self.piece_boards[BLACK][KNIGHT].0.count_ones() < 3 && self.piece_boards[BLACK][BISHOP].is_empty()) || (self.piece_boards[BLACK][BISHOP].0.count_ones() == 1 && self.piece_boards[BLACK][KNIGHT].is_empty())) { return true }
+          } else if self.piece_boards[WHITE][QUEEN].is_empty() && self.piece_boards[BLACK][QUEEN].is_empty() {
+              if self.piece_boards[WHITE][ROOK].0.count_ones() == 1 && self.piece_boards[BLACK][ROOK].0.count_ones() == 1 {
+                  if (self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones()) < 2 && (self.piece_boards[BLACK][KNIGHT].0.count_ones() + self.piece_boards[BLACK][BISHOP].0.count_ones()) < 2 { return true }
+              } else if self.piece_boards[WHITE][ROOK].0.count_ones() == 1 && self.piece_boards[BLACK][ROOK].is_empty() {
+                  if (self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones() == 0) && (((self.piece_boards[BLACK][KNIGHT].0.count_ones() + self.piece_boards[BLACK][BISHOP].0.count_ones()) == 1) || ((self.piece_boards[BLACK][KNIGHT].0.count_ones() + self.piece_boards[BLACK][BISHOP].0.count_ones()) == 2)) { return true }
+              } else if (self.piece_boards[BLACK][ROOK].0.count_ones() == 1 && self.piece_boards[WHITE][ROOK].is_empty()) && ((self.piece_boards[BLACK][KNIGHT].0.count_ones() + self.piece_boards[BLACK][BISHOP].0.count_ones() == 0) && (((self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones()) == 1) || ((self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones()) == 2))) { return true }
+          }
+        false
+    }
+
+    fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
+        self.material_mg(our_side) - self.material_mg(enemy_side) +
+        self.psqt_mg(our_side) - self.psqt_mg(enemy_side)
+    }
+
+    fn material_mg(&self, our_side: Side) -> Eval {
+        self.material[our_side]
+    }
+
+    fn psqt_mg(&self, our_side: Side) -> Eval {
+        self.psqt_mg[our_side]
+    }
+
+    fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
+        self.material_eg(our_side) - self.material_eg(enemy_side) +
+        self.psqt_eg(our_side) - self.psqt_eg(enemy_side)
+    }
+
+    fn material_eg(&self, our_side: Side) -> Eval {
+        self.material_eg[our_side]
+    }
+
+    fn psqt_eg(&self, our_side: Side) -> Eval {
+        self.psqt_eg[our_side]
+    }
+
     pub fn phase(&self) -> Eval {
         let mut phase = TOTAL_PHASE + self.phase;
         phase = (phase * 256 + (TOTAL_PHASE / 2)) / TOTAL_PHASE;
         phase as Eval
-    }
-
-    pub fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
-        let material = (self.material[our_side] - self.material[enemy_side]);
-        let psqt = (self.psqt_mg[our_side] - self.psqt_mg[enemy_side]); 
-        let king = (self.king_safety_mg(our_side) - self.king_safety_mg(enemy_side));
-        let mobility = (self.mobility_mg(our_side) - self.mobility_mg(enemy_side));
-        let pieces = (self.pieces_mg(our_side) - self.pieces_mg(enemy_side));
-        let pawns = (self.pawns_mg(our_side) - self.pawns_mg(enemy_side));
-        let space = (self.space_mg(our_side) - self.space_mg(enemy_side));
-        material + psqt + king + mobility + pieces + pawns + space
-    }
-
-    fn pieces_mg(&self, our_side: Side) -> Eval {
-        [0, 20, 50][self.rook_on_open_file(our_side) as usize]
-    }
-
-    fn pawns_mg(&self, our_side: Side) -> Eval {
-        let mut eval = 0;
-        for pawn in self.piece_boards[our_side][PAWN] {
-            if self.is_doubled(our_side, pawn) {
-                eval -= 10;
-            }
-            if self.is_isolated(our_side, pawn) {
-                eval -= 10;
-            }
-            if self.is_passed(our_side, pawn) {
-                eval += [0, 10, 20, 30, 60, 160, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
-            }
-            if self.is_connected(our_side, pawn) {
-                // eval += 10;
-            }
-        }
-        eval
-    }
-
-    fn ranked_passed_pawn(side: Side, square: Square) -> usize {
-        if side == WHITE {
-            square / 8
-        } else {
-            8 - (square / 8)
-        }
-    }
-
-    fn pawns_eg(&self, our_side: Side) -> Eval {
-        let mut eval = 0;
-        for pawn in self.piece_boards[our_side][PAWN] {
-            if self.is_doubled(our_side, pawn) {
-                eval -= 30;
-            }
-            if self.is_isolated(our_side, pawn) {
-                eval -= 8;
-            }
-            if self.is_passed(our_side, pawn) {
-                eval += [0, 30, 35, 45, 70, 150, 280, 0][Self::ranked_passed_pawn(our_side, pawn)];
-            }
-            
-            if self.is_connected(our_side, pawn) {
-                // eval += 20;
-            }
-        }
-        eval
-    }
-
-    fn is_isolated(&self, our_side: Side, square: Square) -> bool {
-        (self.piece_boards[our_side][PAWN] & ISOLATED_MASKS[square % 8]).is_empty()
-    }
-
-    fn is_doubled(&self, our_side: Side, square: Square) -> bool {
-        (self.piece_boards[our_side][PAWN] & FILE_BITMASK[square % 8]).0.count_ones() > 1
-    }
-
-    fn is_passed(&self, our_side: Side, square: Square) -> bool {
-        (self.piece_boards[our_side ^ 1][PAWN] & PASSED_MASK[our_side][square]).is_empty()
-    }
-
-    fn is_connected(&self, our_side: Side, square: Square) -> bool {
-        let pawn_board = Bitboard::square(square);
-        let attacks = if our_side == WHITE {
-            ((pawn_board &!FILE_BITMASK[0]) >> 7) 
-            | ((pawn_board &!FILE_BITMASK[7]) >> 9) 
-        } else {
-            ((pawn_board &!FILE_BITMASK[0]) << 7)
-            | ((pawn_board &!FILE_BITMASK[7]) << 9)
-        };
-        let phalanx = (((pawn_board & !FILE_BITMASK[0]) >> 1) | ((pawn_board & !FILE_BITMASK[7]) << 1)) & self.piece_boards[our_side][PAWN];
-        (self.piece_boards[our_side][PAWN] & attacks).is_filled() || phalanx.is_filled()
-    }
-
-    pub fn eg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
-        (self.material[our_side] - self.material[enemy_side]) 
-        + (self.psqt_eg[our_side] - self.psqt_eg[enemy_side])
-        + (self.pieces_eg(our_side) - self.pieces_eg(enemy_side))
-        + (self.mobility_eg(our_side) - self.mobility_eg(enemy_side)) 
-        + (self.pawns_eg(our_side) - self.pawns_eg(enemy_side))
-        + TEMPO_VALUE
-    }
-
-    fn pieces_eg(&self, our_side: Side) -> Eval {
-        [0, 10, 30][self.rook_on_open_file(our_side) as usize]
-    }
-
-    fn king_safety_mg(&self, our_side: Side) -> Eval {
-        let mut eval = 0;
-        if !self.has_castled[our_side] {
-            eval += NOT_CASTLED_PENALTY
-        } else {
-            eval += (3 - min(3, (KING_MOVES[self.piece_boards[our_side][KING].next_piece_index()] & self.piece_boards[our_side][PAWN]).0.count_ones() as Eval)) * MISSING_PAWN_SHIELD_PENALTY
-        }
-        eval
-    }
-
-    pub fn space_mg(&self, our_side: Side) -> Eval {
-        if self.phase() >= 64 {
-            return 0;
-        }
-        let space_area = self.space_area(our_side);
-        let open_file_count = self.open_file_count();
-        let piece_count = self.our_piece_count(our_side);
-        let weight: i8 = max(0, piece_count as i8 - (2 * open_file_count as i8));
-        (space_area * weight as u8) as Eval
-    }
-
-    pub fn open_file_count(&self) -> u8 {
-        let mut files = 0;
-        let pawns = self.piece_boards[WHITE][PAWN] | self.piece_boards[BLACK][PAWN];
-        for file in 0..8 {
-            if (pawns & FILE_BITMASK[file]).is_empty() {
-                files += 1;
-            }
-        }
-        files
-    }
-
-    pub fn our_piece_count(&self, our_side: Side) -> u8 {
-        (self.piece_boards[our_side][KNIGHT].0.count_ones()
-        + self.piece_boards[our_side][BISHOP].0.count_ones())
-        as u8
-    }
-
-    pub fn space_area(&self, our_side: Side) -> u8 {
-        let central_files = FILE_BITMASK[2] | FILE_BITMASK[3] | FILE_BITMASK[4] | FILE_BITMASK[5];
-        let enemy_side = our_side ^ 1;
-        let mut space_total = 0;
-        if our_side == WHITE {
-            let our_ranks = RANK_BITMASK[1] | RANK_BITMASK[2] |RANK_BITMASK[3];
-            let space_area = central_files & our_ranks;
-            let pawn_attacks = ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) >> 7)
-            & ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) >> 9);
-            let space_area = space_area & !pawn_attacks & !self.piece_boards[our_side][PAWN];
-            space_total += space_area.0.count_ones() as u8;
-            let safe_behind_pawn_one_square = (self.piece_boards[our_side][PAWN] >> 8) & space_area;
-            space_total += safe_behind_pawn_one_square.0.count_ones() as u8;
-            let safe_behind_pawn_two_square = (self.piece_boards[our_side][PAWN] >> 16) & space_area;
-            space_total += safe_behind_pawn_two_square.0.count_ones() as u8;
-            let safe_behind_pawn_three_square = (self.piece_boards[our_side][PAWN] >> 24) & space_area;
-            space_total += safe_behind_pawn_three_square.0.count_ones() as u8;
-        } else {
-            let our_ranks = RANK_BITMASK[4] | RANK_BITMASK[5] |RANK_BITMASK[6];
-            let space_area = central_files & our_ranks;
-            let pawn_attacks = ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) << 7)
-            & ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) << 9);
-            let space_area = space_area & !pawn_attacks & !self.piece_boards[our_side][PAWN];
-            space_total += space_area.0.count_ones() as u8;
-            let safe_behind_pawn_one_square = (self.piece_boards[our_side][PAWN] << 8) & space_area;
-            space_total += safe_behind_pawn_one_square.0.count_ones() as u8;
-            let safe_behind_pawn_two_square = (self.piece_boards[our_side][PAWN] << 16) & space_area;
-            space_total += safe_behind_pawn_two_square.0.count_ones() as u8;
-            let safe_behind_pawn_three_square = (self.piece_boards[our_side][PAWN] << 24) & space_area;
-            space_total += safe_behind_pawn_three_square.0.count_ones() as u8;
-        }
-        space_total
-    }
-
-    fn rook_on_open_file(&self, our_side: Side) -> u8 {
-        let mut rooks = 0;
-        for file in 0..8 {
-            if (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_empty()
-                && (FILE_BITMASK[file] & self.piece_boards[our_side][ROOK]).is_filled() {
-                    rooks += 1;
-            }
-        }
-        std::cmp::max(2, rooks)
-    }
-
-    fn mobility_mg(&self, side: Side) -> Eval {
-        let mut eval = 0;
-        let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
-        let mobility_area = self.mobility_area(side);
-        for from_sq in self.piece_boards[side][ROOK] {
-            eval += MG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][BISHOP] {
-            eval += MG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][KNIGHT] {
-            eval += MG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][QUEEN] {
-            eval += MG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-        eval
-    }
-
-    pub fn mobility_eg(&self, side: Side) -> Eval {
-        let mut eval = 0;
-        let blockers = self.occupancy(WHITE) | self.occupancy(BLACK);
-        let mobility_area = self.mobility_area(side);
-        for from_sq in self.piece_boards[side][ROOK] {
-            eval += EG_ROOK_MOBILITY_BONUS[(rook_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][BISHOP] {
-            eval += EG_BISHOP_MOBILITY_BONUS[(bishop_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][KNIGHT] {
-            eval += EG_KNIGHT_MOBILITY_BONUS[(KNIGHT_MOVES[from_sq] & mobility_area).0.count_ones() as usize];
-        }
-        for from_sq in self.piece_boards[side][QUEEN] {
-            eval += EG_QUEEN_MOBILITY_BONUS[(queen_move_bitboard(from_sq, blockers) & mobility_area).0.count_ones() as usize];
-        }
-
-        eval
     }
 
     pub fn has_repitition(&self) -> bool {
@@ -618,24 +443,272 @@ impl GameState {
         ((self.phase() as f64) * (-40.0_f64 / 256.0_f64) + 55.0_f64) as u16
     }
 
-    fn mobility_area(&self, side: Side) -> Bitboard {
-        let mut area = Bitboard::full();
-        let enemy_side = side ^ 1;
-        area &= !(if side == WHITE {
-            ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) >> 7)
-            | ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) >> 9)
-        } else {
-            ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[0]) << 7)
-            | ((self.piece_boards[enemy_side][PAWN] & !FILE_BITMASK[7]) << 9)
-        });
-        area &= !(self.piece_boards[side][PAWN] & 
-            (if side == WHITE {
-                RANK_BITMASK[1] | RANK_BITMASK[2]
-            } else {
-                RANK_BITMASK[6] | RANK_BITMASK[5]
-            })
-        );
-
-        area
-    }
 }
+
+pub struct EvalParams {
+    pub mg_piece_value: [Eval; NUM_OF_PIECES],
+    pub eg_piece_value: [Eval; NUM_OF_PIECES],
+    pub psqt_eg: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS],
+    pub psqt_mg: [[[Eval; 64]; NUM_OF_PIECES]; NUM_OF_PLAYERS],
+}
+
+pub static mut EVAL_PARAMS: EvalParams = EvalParams {
+    mg_piece_value: [100, 500, 300, 300, 900, 0],
+    eg_piece_value: [100, 500, 300, 300, 900, 0],
+    psqt_mg: [
+        [
+            [
+                0,   0,   0,   0,   0,   0,   0,   0,
+                5,  10,  10, -20, -20,  10,  10,   5,
+                5,  -5, -10,   0,   0, -10,  -5,   5,
+                0,   0,  20,  20,  20,   0,   0,   0,
+                5,   5,  10,  25,  25,  10,   5,   5,
+                10,  10,  20,  30,  30,  20,  10,  10,
+                50,  50,  50,  50,  50,  50,  50,  50,
+                0,   0,   0,   0,   0,   0,   0,   0,
+            ],
+            [
+                0,  0,  0,  5,  5,  0,  0,  0,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                -5,  0,  0,  0,  0,  0,  0, -5,
+                5, 10, 10, 10, 10, 10, 10,  5,
+                0,  0,  0,  0,  0,  0,  0,  0,
+            ],
+            [
+                -50,-40,-30,-30,-30,-30,-40,-50,
+                -40,-20,  0,  5,  5,  0,-20,-40,
+                -30,  5, 10, 15, 15, 15,  5,-30,
+                -30,  0, 15, 20, 20, 15,  0,-30,
+                -30,  5, 15, 20, 20, 15,  5,-30,
+                -30,  0, 10, 15, 15, 10,  0,-30,
+                -40,-20,  0,  0,  0,  0,-20,-40,
+                -50,-40,-30,-30,-30,-30,-40,-50,
+            ],
+            [
+                -20,-10,-10,-10,-10,-10,-10,-20,
+                -10,  5,  0,  0,  0,  0,  5,-10,
+                -10, 10, 10, 10, 10, 10, 10,-10,
+                -10,  0, 10, 10, 10, 10,  0,-10,
+                -10,  5,  5, 10, 10,  5,  5,-10,
+                -10,  0,  5, 10, 10,  5,  0,-10,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -20,-10,-10,-10,-10,-10,-10,-20,
+            ],
+            [
+                -20,-10,-10, -5, -5,-10,-10,-20,
+                -10,  0,  5,  0,  0,  0,  0,-10,
+                -10,  5,  5,  5,  5,  5,  0,-10,
+                0,  0,  5,  5,  5,  5,  0, -5,
+                -5,  0,  5,  5,  5,  5,  0, -5,
+                -10,  0,  5,  5,  5,  5,  0,-10,
+                -10,  0,  0,  0,  0,  0,  0,-10,
+                -20,-10,-10, -5, -5,-10,-10,-20,
+            ],
+            [
+                -20, 30, 20,-30, 0,-30,30,-20,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+            ],
+        ], // White
+        [
+            [
+                0,   0,   0,   0,   0,   0,   0,   0,
+        50,  50,  50,  50,  50,  50,  50,  50,
+        10,  10,  20,  30,  30,  20,  10,  10,
+        5,   5,  10,  25,  25,  10,   5,   5,
+        0,   0,  20,  20,  20,   0,   0,   0,
+        5,  -5, -10,   0,   0, -10,  -5,   5,
+        5,  10,  10, -20, -20,  10,  10,   5,
+        0,   0,   0,   0,   0,   0,   0,   0
+            ],
+            [
+                0,  0,  0,  0,  0,  0,  0,  0,
+        5, 10, 10, 10, 10, 10, 10,  5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        0,  0,  0,  5,  5,  0,  0,  0
+    
+            ],
+            [
+                -50,-40,-30,-30,-30,-30,-40,-50,
+        -40,-20,  0,  0,  0,  0,-20,-40,
+        -30,  0, 10, 15, 15, 10,  0,-30,
+        -30,  5, 15, 20, 20, 15,  5,-30,
+        -30,  0, 15, 20, 20, 15,  0,-30,
+        -30,  5, 10, 15, 15, 15,  5,-30,
+        -40,-20,  0,  5,  5,  0,-20,-40,
+        -50,-40,-30,-30,-30,-30,-40,-50,
+    
+            ],
+            [
+                -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5, 10, 10,  5,  0,-10,
+        -10,  5,  5, 10, 10,  5,  5,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10, 10, 10, 10, 10, 10, 10,-10,
+        -10,  5,  0,  0,  0,  0,  5,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20,
+            ],
+            [
+                -20,-10,-10, -5, -5,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5,  5,  5,  5,  0,-10,
+        -5,  0,  5,  5,  5,  5,  0, -5,
+        0,  0,  5,  5,  5,  5,  0, -5,
+        -10,  5,  5,  5,  5,  5,  0,-10,
+        -10,  0,  5,  0,  0,  0,  0,-10,
+        -20,-10,-10, -5, -5,-10,-10,-20
+    
+            ],
+            [
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -50,-50,-50,-50,-50,-50,-50,-50,
+                -20, 30, 20,-30, 0,-30,30,-20,
+            ],
+    
+        ], // Black
+    ],
+    psqt_eg: [
+        [
+            [
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                5, 5, 5, 5, 5, 5, 5, 5,
+                15, 15, 15, 15, 15, 15, 15, 15,
+                30, 30, 30, 30, 30, 30, 30, 30,
+                50, 50, 50, 50, 50, 50, 50, 50,
+                250, 250, 250, 250, 250, 250, 250, 250,
+                0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            [
+                -20, -10, -10, -10, -10, -10, -10, -20,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -20, -10, -10, -10, -10, -10, -10, -20,
+            ],
+            [
+                -30, -20, -20, -20, -20, -20, -20, -30,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -30, -20, -20, -20, -20, -20, -20, -30,
+            ],
+            [
+                -30, 0, 0, 0, 0, 0, 0, -30,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                -30, 0, 0, 0, 0, 0, 0, -30,
+            ],
+            [
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+            ],
+            [
+                -40, -30, -30, -30, -30, -30, -30, -40,
+                -30, -10, -10, -10, -10, -10, -10, -30,
+                -30, -10,   5,   5,   5,   5, -10, -30,
+                -30, -10,   5,  10,  10,   5, -10, -30,
+                -30, -10,   5,  10,  10,   5, -10, -30,
+                -30, -10,   5,   5,   5,   5, -10, -30,
+                -30, -10, -10, -10, -10, -10, -10, -30,
+                -40, -30, -30, -30, -30, -30, -30, -40,
+            ],
+        ], // White
+        [
+            [
+                0, 0, 0, 0, 0, 0, 0, 0,
+                250, 250, 250, 250, 250, 250, 250, 250,
+                50, 50, 50, 50, 50, 50, 50, 50,
+                30, 30, 30, 30, 30, 30, 30, 30,
+                15, 15, 15, 15, 15, 15, 15, 15,
+                5, 5, 5, 5, 5, 5, 5, 5,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+            ],
+            [
+                -20, -10, -10, -10, -10, -10, -10, -20,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                -20, -10, -10, -10, -10, -10, -10, -20,
+            ],
+            [
+                -30, -20, -20, -20, -20, -20, -20, -30,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -20, 0, 0, 0, 0, 0, 0, -20,
+                -30, -20, -20, -20, -20, -20, -20, -30,
+            ],
+            [
+                -30, 0, 0, 0, 0, 0, 0, -30,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                -30, 0, 0, 0, 0, 0, 0, -30,
+            ],
+            [
+                -10, 0, 0, 0, 0, 0, 0, -10,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0,
+                -10, 0, 0, 0, 0, 0, 0, -10,
+            ],
+            [
+                -40, -30, -30, -30, -30, -30, -30, -40,
+                -30, -10, -10, -10, -10, -10, -10, -30,
+                -30, -10,   5,   5,   5,   5, -10, -30,
+                -30, -10,   5,  10,  10,   5, -10, -30,
+                -30, -10,   5,  10,  10,   5, -10, -30,
+                -30, -10,   5,   5,   5,   5, -10, -30,
+                -30, -10, -10, -10, -10, -10, -10, -30,
+                -40, -30, -30, -30, -30, -30, -30, -40,
+            ],
+        ], // Black
+    ],
+};

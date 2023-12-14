@@ -3,7 +3,6 @@
 #![feature(let_chains)]
 #![feature(lazy_cell)]
 
-
 use std::cell::SyncUnsafeCell;
 use std::env;
 use std::time::Duration;
@@ -33,7 +32,7 @@ mod book;
 mod texel;
 mod lockless;
 mod smpsearch;
-mod parameval;
+mod book_data;
 
 fn initialize_lazy() {
     lazy_static::initialize(&RAY_FROM_TO);
