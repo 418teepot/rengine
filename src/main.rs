@@ -2,6 +2,7 @@
 #![feature(adt_const_params)]
 #![feature(let_chains)]
 #![feature(lazy_cell)]
+#![feature(float_next_up_down)]
 
 use std::cell::SyncUnsafeCell;
 use std::env;
@@ -13,6 +14,7 @@ use lockless::{LockLessTransTable, LockLessValue};
 use movegen::RAY_FROM_TO;
 use r#move::Move;
 use smpsearch::INFINITY;
+use texel::{read_texel_sample_file, find_smallest_k, mean_square_error};
 use crate::texel::{generate_texel_sample, generate_texel_sample_threaded};
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
@@ -44,15 +46,20 @@ fn initialize_lazy() {
 }
 
 fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
+     
+    let all_fens = read_texel_sample_file();
+    let best_k = find_smallest_k(&all_fens);
+    
+    /* 
+    env::set_var("RUST_BACKTRACE", "full");
     initialize_lazy();
     uci_loop();
-    
-    
-    /*
-    let texel_record = generate_texel_sample_threaded(64_000, Duration::from_millis(60), 10);
-    println!("{}", texel_record);
     */
+    
+    
+     
+    // let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 5);
+    
 
     /*  
     let gs = GameState::new_from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1");

@@ -1,4 +1,6 @@
-use crate::smpsearch::INFINITY;
+use crate::eval;
+use crate::gamestate::GameState;
+use crate::smpsearch::{INFINITY, ISMATE};
 
 use crate::{zobrist::ZobristHash, r#move::Move, smpsearch::Eval};
 
@@ -11,7 +13,15 @@ pub struct LockLessTransTable {
 }
 
 impl LockLessTransTable {
-    pub fn insert(&mut self, key: ZobristHash, value: LockLessValue) {
+    pub fn insert(&mut self, key: ZobristHash, state: &GameState, eval: Eval, r#move: Move, flag: LockLessFlag, depth: u8) {
+        let eval = if eval > ISMATE {
+            eval + state.search_ply as Eval
+        } else if eval < -ISMATE {
+            eval - state.search_ply as Eval
+        } else {
+            eval
+        };
+        let value = LockLessValue::new(r#move, flag, eval, depth);
         let index = key.0 as usize % self.buckets.len();
         let old_val = self.buckets[index];
         if old_val.key.0 == 0

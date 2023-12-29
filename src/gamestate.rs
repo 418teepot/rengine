@@ -1,4 +1,4 @@
-use crate::eval::{MATERIAL_VALUE, PSQT_MG, PHASE_WEIGHT, PSQT_EG, EVAL_PARAMS};
+use crate::eval::{MATERIAL_VALUE, PHASE_WEIGHT, EVAL_PARAMS};
 use crate::movegen::{CASTLE_WHITE_QUEENSIDE_CHECK_FREE, CASTLE_WHITE_KINGSIDE_CHECK_FREE, CASTLE_BLACK_QUEENSIDE_CHECK_FREE, CASTLE_BLACK_KINGSIDE_CHECK_FREE};
 use crate::smpsearch::{Eval, NULLMOVE};
 use crate::bitboard::{Bitboard, Square};
@@ -61,6 +61,7 @@ pub struct GameState {
     pub phase: i16,
     pub psqt_eg: [Eval; NUM_OF_PLAYERS],
     pub has_castled: [bool; NUM_OF_PLAYERS],
+    pub search_ply: u8,
 }
 
 impl GameState {
@@ -77,7 +78,7 @@ impl GameState {
         let castling_rights = parts[2];
         let en_passant_square = parts[3];
         let fifty_move_clock = parts[4];
-        let _ply_clock = parts[5];
+        let ply_clock = parts[5];
 
         let mut file = 0;
         let mut rank = 7;
@@ -170,6 +171,9 @@ impl GameState {
                 }
             }
         }
+        if empty_stack > 0 {
+            fen_string.push(std::char::from_digit(empty_stack, 10).unwrap());
+        }
 
         fen_string.push(' ');
         fen_string.push(if self.side_to_move() == WHITE { 'w' } else { 'b' });
@@ -223,6 +227,7 @@ impl GameState {
         
         self.fifty_move_rule += 1;
         self.plys += 1;
+        self.search_ply += 1;
         self.zobrist.flip_side_to_move();
 
         if r#move.is_capture() {
@@ -319,6 +324,16 @@ impl GameState {
 
     }
 
+    pub fn find_first_legal_move(&mut self) -> Move {
+        for r#move in self.generate_pseudo_legal_moves() {
+            if self.apply_pseudo_legal_move(r#move) {
+                self.undo_move();
+                return r#move;
+            }
+        }
+        unreachable!()
+    }
+
     pub fn make_null_move(&mut self) {
         self.history.push(History { r#move: Move::new_from_to(0, 0, 0), fifty_move_rule: self.fifty_move_rule, castling_rights: self.castling_rights, zobrist: self.zobrist, en_passant: self.en_passant_board });
         self.plys += 1;
@@ -382,6 +397,7 @@ impl GameState {
     pub fn undo_move(&mut self) {
         let past = self.history.pop().expect("Tried to undo move that does not exist.");
         self.plys -= 1;
+        self.search_ply -= 1;
 
         let r#move = past.r#move;
         assert!(r#move != Move::new_from_to(0, 0, 0));
@@ -415,16 +431,18 @@ impl GameState {
 
         self.castling_rights = past.castling_rights;
         self.fifty_move_rule = past.fifty_move_rule;
-        self.zobrist = past.zobrist;
         self.en_passant_board = past.en_passant;
+        self.zobrist = past.zobrist;
     }
 
     fn handle_double_pawn_push(&mut self, to: Square, our_side: Side) {
         if our_side == WHITE {
             self.en_passant_board = Bitboard::square(to - 8);
+            self.zobrist.add_en_passant_square(to - 8);
         }
         else {
             self.en_passant_board = Bitboard::square(to + 8);
+            self.zobrist.add_en_passant_square(to + 9)
         }
     }
 
@@ -467,10 +485,12 @@ impl GameState {
                 CastlingSide::QueenSide => {
                     self.move_piece(D1, A1, ROOK, our_side);
                     self.move_piece(C1, E1, KING, our_side);
+                    self.zobrist.add_castling_right(WHITE_QUEENSIDE_CASTLE);
                 },
                 CastlingSide::KingSide => {
                     self.move_piece(F1, H1, ROOK, our_side);
                     self.move_piece(G1, E1, KING, our_side);
+                    self.zobrist.add_castling_right(WHITE_KINGSIDE_CASTLE);
                 }
             }
             return;
@@ -479,10 +499,12 @@ impl GameState {
             CastlingSide::QueenSide => {
                 self.move_piece(D8, A8, ROOK, our_side);
                 self.move_piece(C8, E8, KING, our_side);
+                self.zobrist.add_castling_right(BLACK_QUEENSIDE_CASTLE);
             },
             CastlingSide::KingSide => {
                 self.move_piece(F8, H8, ROOK, our_side);
                 self.move_piece(G8, E8, KING, our_side);
+                self.zobrist.add_castling_right(BLACK_KINGSIDE_CASTLE);
             }
         }
     }
@@ -538,6 +560,16 @@ impl GameState {
         true
     }
 
+    pub fn unavoidable_game_over(&mut self) -> bool {
+        for r#move in self.generate_pseudo_legal_moves() {
+            if self.apply_pseudo_legal_move(r#move) {
+                self.undo_move();
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn dump_panic_debug(&self) {
         println!("\nFen_str: {}\n", self.to_reduced_book_fen());
         print!("Move history: ");
@@ -575,7 +607,7 @@ impl GameState {
             self.psqt_mg[side] -= EVAL_PARAMS.psqt_mg[side][piece][square];
             self.psqt_eg[side] -= EVAL_PARAMS.psqt_eg[side][piece][square];
             self.material[side] -= EVAL_PARAMS.mg_piece_value[piece];
-            self.material[side] -= EVAL_PARAMS.eg_piece_value[piece];
+            self.material_eg[side] -= EVAL_PARAMS.eg_piece_value[piece];
         }
         self.phase += PHASE_WEIGHT[piece];
     }
@@ -588,8 +620,10 @@ impl GameState {
 
     #[inline(always)]
     fn add_castling_right(&mut self, right: usize) {
-        self.castling_rights[right] = true;
-        self.zobrist.add_castling_right(right);
+        if !self.castling_rights[right] {
+            self.castling_rights[right] = true;
+            self.zobrist.add_castling_right(right);
+        }
     }
     
     fn remove_castling_right(&mut self, right: usize) {

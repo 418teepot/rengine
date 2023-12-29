@@ -7,10 +7,13 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::time::Instant;
+use crate::eval::EVAL_PARAMS;
 use crate::gamestate::BLACK;
 use crate::gamestate::KING;
+use crate::gamestate::PAWN;
 use crate::gamestate::WHITE;
 use crate::lockless::LockLessTransTable;
+use crate::smpsearch::MAX_DEPTH;
 use crate::smpsearch::SearchProtocol;
 use crate::smpsearch::UciMode;
 use crate::smpsearch::search;
@@ -78,9 +81,19 @@ pub fn uci_loop() {
             },
             "staticeval" => {
                 println!("{}", gamestate.static_eval());
+                println!("Material White: {}", gamestate.material[WHITE]);
+                println!("Material Black: {}", gamestate.material[BLACK]);
+                println!("Material White Eg: {}", gamestate.material_eg[WHITE]);
+                println!("Material Black Eg: {}", gamestate.material_eg[BLACK]);
+                unsafe {
+                    println!("Pawn Value: {}", EVAL_PARAMS.mg_piece_value[PAWN]);
+                }
             },
             "debugame" => {
                 run_debug_game(&gamestate);
+            },
+            "zobristhis" => {
+                zobrist_history(&gamestate);
             },
             _ => println!("{}", cmd),
         }
@@ -90,11 +103,19 @@ pub fn uci_loop() {
 pub fn run_debug_game(state: &GameState) {
     let mut clone_state = state.clone();
     while !clone_state.is_game_over() {
-        let best_move = search::<{ SearchProtocol::Texel }>(1, Duration::from_secs(1), clone_state.clone(), Arc::new(SyncUnsafeCell::new(false)), 20, Arc::new(SyncUnsafeCell::new(LockLessTransTable::new())));
+        let best_move = search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_secs(1), clone_state.clone(), Arc::new(SyncUnsafeCell::new(false)), 20, Arc::new(SyncUnsafeCell::new(LockLessTransTable::new())));
         clone_state.apply_legal_move(best_move.0);
+        println!("{}", clone_state.static_eval());
         println!("{} ", best_move.0.to_algebraic());
     }
     println!();
+}
+
+pub fn zobrist_history(state: &GameState) {
+    for history in state.history.iter() {
+        println!("{} {}", history.r#move.to_algebraic(), history.zobrist.0)
+    }
+    println!("Is Draw?: {}", state.has_repitition())
 }
 
 pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCell<bool>>, trans_table: &Arc<SyncUnsafeCell<LockLessTransTable>>) -> std::thread::JoinHandle<(Move, Eval)> {
@@ -112,8 +133,8 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
     }
     let wtime = *settings.get("wtime").unwrap_or(&0) as u64;
     let btime = *settings.get("btime").unwrap_or(&0) as u64;
-    let winc = settings.get("winc").map(|&v| (v as u64).clone());
-    let binc = settings.get("binc").map(|&v| (v as u64).clone());
+    let winc = *settings.get("winc").unwrap_or(&50) as u64;
+    let binc = *settings.get("binc").unwrap_or(&50) as u64;
     let stop_flag_clone = Arc::clone(stop_flag);
     let trans_table_clone = Arc::clone(trans_table);
     unsafe {
@@ -121,16 +142,16 @@ pub fn cmd_go(parts: &[&str], gamestate: GameState, stop_flag: &Arc<SyncUnsafeCe
     }
     let search = if is_infinite {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(3, Duration::from_micros(0), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Infinite) }>(1, Duration::from_micros(0), gamestate, stop_flag_clone, MAX_DEPTH as u8, trans_table_clone)
         })
     } else if let Some(&movetime) = settings.get("movetime") {
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(3, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(movetime as u64), gamestate, stop_flag_clone, MAX_DEPTH as u8, trans_table_clone)
         })
     } else {
         let move_time = gamestate.calculate_movetime(wtime, btime, winc, binc);
         thread::spawn(move || {
-            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(3, Duration::from_millis(move_time), gamestate, stop_flag_clone, 20, trans_table_clone)
+            search::<{ SearchProtocol::Uci(UciMode::Movetime) }>(1, Duration::from_millis(move_time), gamestate, stop_flag_clone, MAX_DEPTH as u8, trans_table_clone)
         })
     };
     
