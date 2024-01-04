@@ -1,9 +1,10 @@
+use std::cell::SyncUnsafeCell;
 use std::cmp::{min, max};
 
 use crate::bitboard::{Bitboard, Square, NUM_OF_SQUARES};
 use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT};
 use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK, knight_move_bitboard};
-use crate::smpsearch::Eval;
+use crate::smpsearch::{Eval, AB_BOUND};
 
 const PAWN_VALUE: Eval = 100;
 const ROOK_VALUE: Eval = 500;
@@ -64,12 +65,18 @@ impl GameState {
         let enemy_side = our_side ^ 1;
         // Is material draw?
         if self.piece_boards[WHITE][PAWN].is_empty() && self.piece_boards[BLACK][PAWN].is_empty() {
+            if let Some(side) = self.knight_bishop_lonesome_side() {
+                if side == enemy_side {
+                    return 20 - self.bishop_knight_ending_eval(side);
+                } else {
+                    return -20 + self.bishop_knight_ending_eval(side);
+                }
+            }
+
             if self.is_material_draw() {
                 return 0;
             }
         }
-
-        
 
         // Material Value
         let mut mg_eval = self.mg_eval(our_side, enemy_side);
@@ -89,6 +96,20 @@ impl GameState {
         ((mg_eval * (256 - phase)) + (eg_eval * phase)) / 256
     }
 
+    pub fn bishop_knight_ending_eval(&self, lonesome_side: Side) -> Eval {
+        let king_square = self.piece_boards[lonesome_side][KING].next_piece_index() as i64;
+        let bishop_square = self.piece_boards[lonesome_side ^ 1][BISHOP].next_piece_index() as i64;
+        let manhatten_distance = self.manhatten_distance_corner_bishop(bishop_square, king_square);
+        manhatten_distance * 100
+    }
+
+    pub fn manhatten_distance_corner_bishop(&self, bishop_square: i64, king_square: i64) -> Eval {
+        let b: i64 = -1879048192 * bishop_square >> 31;
+        let k: i64 = (king_square>>3) + ((king_square^b) & 7);
+        let k: i64 = (15*(k>>3)^k)-(k>>3);
+        k as Eval
+    }
+
     fn pawns(&self, our_side: Side) -> (Eval, Eval) {
         let mut pawns_mg = 0;
         let mut pawns_eg = 0;
@@ -104,11 +125,39 @@ impl GameState {
                     pawns_eg += EVAL_PARAMS.eg_passed[passed_rank];
                 }
             }
+            let file = pawn % 8;
+            let isolated: bool = (ISOLATED_MASKS[file] & self.piece_boards[our_side][PAWN]).is_empty();
+            let doubled: bool = {
+                let pawn_bitboard = Bitboard(1 << pawn);
+                let pawn_up_one = if our_side == WHITE {
+                    pawn_bitboard << 8
+                } else {
+                    pawn_bitboard >> 8
+                };
+                (pawn_up_one & self.piece_boards[our_side][PAWN]).is_filled()
+            };
+            if doubled && isolated {
+                unsafe {
+                    pawns_mg -= EVAL_PARAMS.mg_doubled_isolated_penalty;
+                    pawns_eg -= EVAL_PARAMS.eg_doubled_isolated_penalty;
+                }
+            } else if isolated {
+                unsafe {
+                    pawns_mg -= EVAL_PARAMS.mg_isolated_penalty;
+                    pawns_eg -= EVAL_PARAMS.eg_isolated_penalty;
+                }
+            }
+            if doubled {
+                unsafe {
+                    pawns_mg -= EVAL_PARAMS.mg_doubled_penalty;
+                    pawns_eg -= EVAL_PARAMS.eg_doubled_penalty;
+                }
+            }
         }
         (pawns_mg, pawns_eg)
     }
 
-    fn is_material_draw(&self) -> bool {
+    pub fn is_material_draw(&self) -> bool {
         if self.piece_boards[WHITE][ROOK].is_empty() && self.piece_boards[BLACK][ROOK].is_empty() && self.piece_boards[WHITE][QUEEN].is_empty() && self.piece_boards[BLACK][QUEEN].is_empty() {
             if self.piece_boards[BLACK][BISHOP].is_empty() && self.piece_boards[WHITE][BISHOP].is_empty() {
                 if self.piece_boards[WHITE][KNIGHT].0.count_ones() < 3 && self.piece_boards[BLACK][KNIGHT].0.count_ones() < 3 { return true }
@@ -123,6 +172,18 @@ impl GameState {
               } else if (self.piece_boards[BLACK][ROOK].0.count_ones() == 1 && self.piece_boards[WHITE][ROOK].is_empty()) && ((self.piece_boards[BLACK][KNIGHT].0.count_ones() + self.piece_boards[BLACK][BISHOP].0.count_ones() == 0) && (((self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones()) == 1) || ((self.piece_boards[WHITE][KNIGHT].0.count_ones() + self.piece_boards[WHITE][BISHOP].0.count_ones()) == 2))) { return true }
           }
         false
+    }
+
+    pub fn knight_bishop_lonesome_side(&self) -> Option<Side> {
+        if self.material[WHITE] == 0 && self.piece_boards[BLACK][ROOK].piece_count() == 0 && self.piece_boards[BLACK][QUEEN].piece_count() == 0
+        && self.piece_boards[BLACK][BISHOP].piece_count() == 1 && self.piece_boards[BLACK][KNIGHT].piece_count() == 1 {
+            return Some(WHITE);
+        }
+        if self.material[BLACK] == 0 && self.piece_boards[WHITE][ROOK].piece_count() == 0 && self.piece_boards[WHITE][QUEEN].piece_count() == 0 
+        && self.piece_boards[WHITE][BISHOP].piece_count() == 1 && self.piece_boards[WHITE][KNIGHT].piece_count() == 1 {
+            return Some(BLACK);
+        }
+        None
     }
 
     fn mg_eval(&self, our_side: Side, enemy_side: Side) -> Eval {
@@ -256,9 +317,6 @@ impl GameState {
 
     pub fn has_repitition(&self) -> bool {
         for index in (0..self.history.len()).rev() {
-            if self.history[index].fifty_move_rule == 0 {
-                break;
-            }
             if self.history[index].zobrist == self.zobrist {
                 return true;
             }
@@ -316,14 +374,20 @@ pub struct EvalParams {
     pub eg_knight_mobility: [Eval; 9],
     pub mg_queen_mobility: [Eval; 28],
     pub eg_queen_mobility: [Eval; 28],
-    pub open_king_file_punish_mg: Eval,
     pub mg_passed: [Eval; 8],
     pub eg_passed: [Eval; 8],
+    pub open_king_file_punish_mg: Eval,
+    pub mg_isolated_penalty: Eval,
+    pub eg_isolated_penalty: Eval,
+    pub mg_doubled_isolated_penalty: Eval,
+    pub eg_doubled_isolated_penalty: Eval,
+    pub mg_doubled_penalty: Eval,
+    pub eg_doubled_penalty: Eval,
 }
 
 pub static mut EVAL_PARAMS: EvalParams = EvalParams {
-    mg_piece_value: [100, 500, 300, 300, 900, 0],
-    eg_piece_value: [100, 500, 300, 300, 900, 0],
+    mg_piece_value: [100, 500, 300, 300, 1000, 0],
+    eg_piece_value: [100, 500, 300, 300, 1000, 0],
     psqt_mg: [
         [
             [
@@ -586,6 +650,61 @@ pub static mut EVAL_PARAMS: EvalParams = EvalParams {
     mg_queen_mobility: [-30,-12,-8,-9,20,23,23,35,38,53,64,65,65,66,67,67,72,72,77,79,93,108,108,108,110,114,114,116],
     eg_queen_mobility: [-48,-30,-7,19,40,55,59,75,78,96,96,100,121,127,131,133,136,141,147,150,151,168,168,171,182,182,192,219],
     open_king_file_punish_mg: 50,
-    mg_passed: [0,10,17,15,62,168,276, 0],
-    eg_passed: [0,28,33,41,72,177,260, 0],
+    mg_passed: [0, 10,17,15,62,168,276, 0],
+    eg_passed: [0, 28,33,41,72,177,260, 0],
+    mg_isolated_penalty: 5,
+    eg_isolated_penalty: 15,
+    mg_doubled_isolated_penalty: 11,
+    eg_doubled_isolated_penalty: 56,
+    mg_doubled_penalty: 11,
+    eg_doubled_penalty: 56,
 };
+
+pub fn relevant_eval_params() -> Vec<*mut Eval> {
+    let mut params = vec![];
+    unsafe {
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_isolated_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_isolated_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_doubled_isolated_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_doubled_isolated_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_doubled_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_doubled_penalty));
+        for n in 0..EVAL_PARAMS.mg_piece_value.len() - 1 {
+            params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_piece_value[n]));
+            params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_piece_value[n]));
+        }
+        for n in 1..EVAL_PARAMS.mg_passed.len() - 1 {
+            params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_passed[n]));
+            params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_passed[n]));
+        }
+    }
+    params
+}
+
+pub fn print_relevant_params() {
+    print!("MG_VALUE:");
+    unsafe {
+        for value in EVAL_PARAMS.mg_piece_value {
+            print!(" {}", value);
+        }
+        println!();
+        print!("EG_VALUE:");
+        for value in EVAL_PARAMS.eg_piece_value {
+            print!(" {}", value);
+        }
+        println!();
+        print!("MG_PASSED:");
+        for value in EVAL_PARAMS.mg_passed {
+            print!(" {}", value);
+        }
+        println!();
+        print!("EG_PASSED:");
+        for value in EVAL_PARAMS.eg_passed {
+            print!(" {}", value);
+        }
+        println!();
+        println!("ISOLATED (MG, EG): {} {}", EVAL_PARAMS.mg_isolated_penalty, EVAL_PARAMS.eg_isolated_penalty);
+        println!("DOUBLED ISOLATED (MG, EG): {} {}", EVAL_PARAMS.mg_doubled_isolated_penalty, EVAL_PARAMS.eg_doubled_isolated_penalty);
+        println!("DOUBLED (MG, EG): {} {}", EVAL_PARAMS.mg_doubled_penalty, EVAL_PARAMS.eg_doubled_penalty);
+    }
+}

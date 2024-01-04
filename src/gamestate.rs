@@ -548,6 +548,9 @@ impl GameState {
 
     pub fn is_game_over(&mut self) -> bool {
         let moves = self.generate_pseudo_legal_moves();
+        if self.piece_boards[WHITE][PAWN].is_empty() && self.piece_boards[BLACK][PAWN].is_empty() && self.is_material_draw() {
+            return true;
+        }
         if self.fifty_move_rule >= 100 || self.has_repitition() {
             return true;
         }

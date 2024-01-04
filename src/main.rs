@@ -9,12 +9,13 @@ use std::env;
 use std::time::Duration;
 
 use book::OPENING_BOOK;
+use eval::relevant_eval_params;
 use gamestate::{GameState, ROOK};
 use lockless::{LockLessTransTable, LockLessValue};
 use movegen::RAY_FROM_TO;
 use r#move::Move;
 use smpsearch::INFINITY;
-use texel::{read_texel_sample_file, find_smallest_k, mean_square_error};
+use texel::{read_texel_sample_file, find_smallest_k, mean_square_error, optimize_params};
 use crate::texel::{generate_texel_sample, generate_texel_sample_threaded};
 use crate::uci::uci_loop;
 use crate::{magic::{BISHOP_MAGICS_AND_PLAYS, ROOK_MAGICS_AND_PLAYS}, movegen::{KING_MOVES, KNIGHT_MOVES}};
@@ -46,9 +47,13 @@ fn initialize_lazy() {
 }
 
 fn main() {
-     
+    /* 
     let all_fens = read_texel_sample_file();
     let best_k = find_smallest_k(&all_fens);
+    */
+     
+    let params = relevant_eval_params();
+    optimize_params(params);
     
     /* 
     env::set_var("RUST_BACKTRACE", "full");
@@ -57,7 +62,7 @@ fn main() {
     */
     
     
-     
+    
     // let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 5);
     
 

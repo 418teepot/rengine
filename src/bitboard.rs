@@ -61,6 +61,11 @@ impl Bitboard {
         self.0.trailing_zeros() as Square
     }
 
+    #[inline(always)]
+    pub fn piece_count(&self) -> u32 {
+        self.0.count_ones()
+    }
+
     #[allow(dead_code)]
     pub fn print(self) {
         for rank in (0..8).rev() {

@@ -25,7 +25,7 @@ impl LockLessTransTable {
         let index = key.0 as usize % self.buckets.len();
         let old_val = self.buckets[index];
         if old_val.key.0 == 0
-        || self.ages[index] < self.current_age
+        || self.ages[index] <= self.current_age
         || old_val.value.depth() <= value.depth() {
             self.buckets[index].key = ZobristHash(key.0 ^ value.0);
             self.buckets[index].value = value;

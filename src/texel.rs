@@ -4,7 +4,7 @@ use rand::{distributions::WeightedIndex, thread_rng, prelude::*};
 
 use std::fs::OpenOptions;
 
-use crate::{gamestate::{GameState, BLACK, Side, WHITE}, book::OPENING_BOOK, r#move::Move, smpsearch::{Eval, iterative_deepening, SearchProtocol, search, quiescent_search, AB_BOUND, SearchInfo, INFINITY, UciMode, ISMATE}, lockless::LockLessTransTable};
+use crate::{gamestate::{GameState, BLACK, Side, WHITE}, book::OPENING_BOOK, r#move::Move, smpsearch::{Eval, iterative_deepening, SearchProtocol, search, quiescent_search, AB_BOUND, SearchInfo, INFINITY, UciMode, ISMATE}, lockless::LockLessTransTable, eval::print_relevant_params};
 
 pub fn generate_texel_sample_threaded(samples: u32, movetime: Duration, simul_threads: u8) -> String {
     let mut texel_samples = String::new();
@@ -136,8 +136,8 @@ pub fn mean_square_error(k: f64, fen_and_values: &Vec<(String, f64)>) -> f64 {
         let mut gamestate = GameState::new_from_fen(&format!("{fen} 0 1"));
 
         let eval = {
-            // let tmp_eval = quiescent_search::<{SearchProtocol::Uci(UciMode::Infinite)}>(&mut gamestate, -INFINITY, INFINITY, 10, &mut SearchInfo::new(Duration::from_millis(0), Arc::new(SyncUnsafeCell::new(false))));
-            let tmp_eval = gamestate.static_eval();
+            let tmp_eval = quiescent_search::<{SearchProtocol::Uci(UciMode::Infinite)}>(&mut gamestate, -INFINITY, INFINITY, 10, &mut SearchInfo::new(Duration::from_millis(0), Arc::new(SyncUnsafeCell::new(false))));
+            // let tmp_eval = gamestate.static_eval();
             (if gamestate.side_to_move() == BLACK {
                 -tmp_eval
             } else {
@@ -152,31 +152,64 @@ pub fn mean_square_error(k: f64, fen_and_values: &Vec<(String, f64)>) -> f64 {
     error / fen_and_values.len() as f64
 }
 
+pub fn optimize_params(params: Vec<*mut Eval>) {
+    let fen_and_values = read_texel_sample_file();
+    let mut best_e = mean_square_error(K, &fen_and_values);
+    let mut improved = true;
+    while improved {
+        
+        improved = false;
+        for &param in params.iter() {
+            print_relevant_params();
+            println!("Error: {best_e}\n");
+            unsafe {
+                *param += 1;
+            }
+            let new_e = mean_square_error(K, &fen_and_values);
+            if new_e < best_e {
+                best_e = new_e;
+                improved = true;
+            } else {
+                unsafe {
+                    *param -= 2;
+                    let new_e = mean_square_error(K, &fen_and_values);
+                    if new_e < best_e {
+                        best_e = new_e;
+                        improved = true;
+                    } else {
+                        *param += 1;
+                    }
+                }
+            }
+        }
+    }
+}
 
-const DELTA_K: f64 = 0.01_f64;
-const RIGHT_MAX: f64 = 20.00_f64;
-const LEFT_MAX: f64 = 0.00_f64;
+const DELTA_K: f64 = 0.0001_f64;
+const K: f64 = 0.598_f64;
+// const RIGHT_MAX: f64 = 15.00_f64;
+// const LEFT_MAX: f64 = 0.00_f64;
 pub fn find_smallest_k(fen_and_values: &Vec<(String, f64)>) -> f64 {
-    let mut left_max = LEFT_MAX;
-    let mut right_max = RIGHT_MAX;
-    let mut best_k = (left_max + right_max) * 0.5f64;
+    // let mut left_max = LEFT_MAX;
+    // let mut right_max = RIGHT_MAX;
+    let mut best_k = 0.598_f64;
     let mut improved = true;
     let mut best_e = mean_square_error(best_k, fen_and_values);
     while improved {
         improved = false;
-        println!("Error: {best_e} \t k: {best_k} \t leftMax: {left_max} \t rightMax: {right_max}");
-        let new_k = (best_k + right_max) * 0.5_f64;
+        println!("Error: {best_e} \t k: {best_k}");
+        let new_k = best_k + DELTA_K;
         let new_e = mean_square_error(new_k, fen_and_values);
         if new_e < best_e {
-            left_max = best_k;
+            // left_max = best_k;
             best_e = new_e;
             best_k = new_k;
             improved = true;
         } else {
-            let new_k = (best_k + left_max) * 0.5_f64;
+            let new_k = best_k - DELTA_K;
             let new_e = mean_square_error(new_k, fen_and_values);
             if new_e < best_e {
-                right_max = best_k;
+                // right_max = best_k;
                 best_e = new_e;
                 best_k = new_k;
                 improved = true;
