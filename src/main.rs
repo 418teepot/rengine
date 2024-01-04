@@ -51,10 +51,10 @@ fn main() {
     let all_fens = read_texel_sample_file();
     let best_k = find_smallest_k(&all_fens);
     */
-     
+    /* 
     let params = relevant_eval_params();
     optimize_params(params);
-    
+    */
     /* 
     env::set_var("RUST_BACKTRACE", "full");
     initialize_lazy();
@@ -63,7 +63,7 @@ fn main() {
     
     
     
-    // let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 5);
+    let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 10);
     
 
     /*  
