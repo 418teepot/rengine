@@ -53,10 +53,10 @@ fn main() {
     let best_k = find_smallest_k(&all_fens);
     */
 
-    /* 
+    
     let params = relevant_eval_params();
     optimize_params(params);
-    */
+    
 
     /*  
     env::set_var("RUST_BACKTRACE", "full");
@@ -66,5 +66,5 @@ fn main() {
     
     // let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 10);
     
-    let _ = crate::smac::smac();
+    // let _ = crate::smac::smac();
 }
