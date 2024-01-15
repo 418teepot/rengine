@@ -66,5 +66,5 @@ fn main() {
     
     // let texel_record = generate_texel_sample_threaded(64000, Duration::from_millis(60), 10);
     
-     let _ = crate::smac::smac();
+    let _ = crate::smac::smac();
 }
