@@ -5,6 +5,7 @@ use crate::bitboard::{Bitboard, Square, NUM_OF_SQUARES};
 use crate::gamestate::{GameState, NUM_OF_PIECES, NUM_OF_PLAYERS, Side, KING, PAWN, ROOK, QUEEN, WHITE, BLACK, BISHOP, KNIGHT};
 use crate::movegen::{KING_MOVES, rook_move_bitboard, bishop_move_bitboard, KNIGHT_MOVES, queen_move_bitboard, FILE_BITMASK, RANK_BITMASK, knight_move_bitboard};
 use crate::smpsearch::{Eval, AB_BOUND};
+use clap::Parser;
 
 const PAWN_VALUE: Eval = 100;
 const ROOK_VALUE: Eval = 500;
@@ -359,7 +360,6 @@ impl GameState {
     }
 
 }
-
 
 pub struct EvalParams {
     pub mg_piece_value: [Eval; NUM_OF_PIECES],

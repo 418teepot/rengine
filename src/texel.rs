@@ -186,7 +186,7 @@ pub fn optimize_params(params: Vec<*mut Eval>) {
 }
 
 const DELTA_K: f64 = 0.0001_f64;
-const K: f64 = 0.598_f64;
+pub const K: f64 = 0.598_f64;
 // const RIGHT_MAX: f64 = 15.00_f64;
 // const LEFT_MAX: f64 = 0.00_f64;
 pub fn find_smallest_k(fen_and_values: &Vec<(String, f64)>) -> f64 {
