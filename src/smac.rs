@@ -6,6 +6,8 @@ use crate::{smpsearch::Eval, eval::{EvalParams, EVAL_PARAMS}, gamestate::{PAWN, 
 #[derive(Parser, Debug)]
 struct Args {
     #[arg(long)]
+    seed: i64,
+    #[arg(long)]
     mp: Eval,
     #[arg(long)]
     ep: Eval,
