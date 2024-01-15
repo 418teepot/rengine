@@ -137,12 +137,7 @@ impl GameState {
                 };
                 (pawn_up_one & self.piece_boards[our_side][PAWN]).is_filled()
             };
-            if doubled && isolated {
-                unsafe {
-                    pawns_mg -= EVAL_PARAMS.mg_doubled_isolated_penalty;
-                    pawns_eg -= EVAL_PARAMS.eg_doubled_isolated_penalty;
-                }
-            } else if isolated {
+            if isolated {
                 unsafe {
                     pawns_mg -= EVAL_PARAMS.mg_isolated_penalty;
                     pawns_eg -= EVAL_PARAMS.eg_isolated_penalty;
@@ -153,6 +148,11 @@ impl GameState {
                     pawns_mg -= EVAL_PARAMS.mg_doubled_penalty;
                     pawns_eg -= EVAL_PARAMS.eg_doubled_penalty;
                 }
+            }
+            let supported_count = self.supported_count(our_side, pawn) as Eval;
+            unsafe {
+                pawns_mg += supported_count * EVAL_PARAMS.mg_supported_bonus;
+                pawns_eg += supported_count * EVAL_PARAMS.eg_supported_bonus;
             }
         }
         (pawns_mg, pawns_eg)
@@ -359,6 +359,31 @@ impl GameState {
         ((self.phase() as f64) * (-40.0_f64 / 256.0_f64) + 55.0_f64) as u16
     }
 
+    fn is_connected(&self, our_side: Side, square: Square) -> bool {
+        let pawn_board = Bitboard::square(square);
+        let attacks = if our_side == WHITE {
+            ((pawn_board &!FILE_BITMASK[0]) >> 7) 
+            | ((pawn_board &!FILE_BITMASK[7]) >> 9) 
+        } else {
+            ((pawn_board &!FILE_BITMASK[0]) << 7)
+            | ((pawn_board &!FILE_BITMASK[7]) << 9)
+        };
+        let phalanx = (((pawn_board & !FILE_BITMASK[0]) >> 1) | ((pawn_board & !FILE_BITMASK[7]) << 1)) & self.piece_boards[our_side][PAWN];
+        (self.piece_boards[our_side][PAWN] & attacks).is_filled() || phalanx.is_filled()
+    }
+
+    fn supported_count(&self, our_side: Side, square: Square) -> u8 {
+        let pawn_board = Bitboard::square(square);
+        let attacks = if our_side == WHITE {
+            ((pawn_board &!FILE_BITMASK[0]) >> 7) 
+            | ((pawn_board &!FILE_BITMASK[7]) >> 9) 
+        } else {
+            ((pawn_board &!FILE_BITMASK[0]) << 7)
+            | ((pawn_board &!FILE_BITMASK[7]) << 9)
+        };
+        attacks.piece_count() as u8
+    }
+
 }
 
 pub struct EvalParams {
@@ -379,10 +404,10 @@ pub struct EvalParams {
     pub open_king_file_punish_mg: Eval,
     pub mg_isolated_penalty: Eval,
     pub eg_isolated_penalty: Eval,
-    pub mg_doubled_isolated_penalty: Eval,
-    pub eg_doubled_isolated_penalty: Eval,
     pub mg_doubled_penalty: Eval,
     pub eg_doubled_penalty: Eval,
+    pub mg_supported_bonus: Eval,
+    pub eg_supported_bonus: Eval,
 }
 
 pub static mut EVAL_PARAMS: EvalParams = EvalParams {
@@ -525,10 +550,10 @@ pub static mut EVAL_PARAMS: EvalParams = EvalParams {
     eg_passed: [0, 28,33,41,72,177,260, 0],
     mg_isolated_penalty: 23,
     eg_isolated_penalty: 12,
-    mg_doubled_isolated_penalty: -18,
-    eg_doubled_isolated_penalty: 37,
     mg_doubled_penalty: 28,
     eg_doubled_penalty: 36,
+    mg_supported_bonus: 21,
+    eg_supported_bonus: 21,
 };
 
 pub fn relevant_eval_params() -> Vec<*mut Eval> {
@@ -536,8 +561,8 @@ pub fn relevant_eval_params() -> Vec<*mut Eval> {
     unsafe {
         params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_isolated_penalty));
         params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_isolated_penalty));
-        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_doubled_isolated_penalty));
-        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_doubled_isolated_penalty));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_supported_bonus));
+        params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_supported_bonus));
         params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.mg_doubled_penalty));
         params.push(std::ptr::addr_of_mut!(EVAL_PARAMS.eg_doubled_penalty));
         for n in 0..EVAL_PARAMS.mg_piece_value.len() - 1 {
@@ -575,7 +600,6 @@ pub fn print_relevant_params() {
         }
         println!();
         println!("ISOLATED (MG, EG): {} {}", EVAL_PARAMS.mg_isolated_penalty, EVAL_PARAMS.eg_isolated_penalty);
-        println!("DOUBLED ISOLATED (MG, EG): {} {}", EVAL_PARAMS.mg_doubled_isolated_penalty, EVAL_PARAMS.eg_doubled_isolated_penalty);
         println!("DOUBLED (MG, EG): {} {}", EVAL_PARAMS.mg_doubled_penalty, EVAL_PARAMS.eg_doubled_penalty);
     }
 }

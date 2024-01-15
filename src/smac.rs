@@ -27,6 +27,19 @@ struct Args {
     mq: Eval,
     #[arg(long)]
     eq: Eval,
+    
+    #[arg(long)]
+    mip: Eval,
+    #[arg(long)]
+    eip: Eval,
+    #[arg(long)]
+    msb: Eval,
+    #[arg(long)]
+    esb: Eval,
+    #[arg(long)]
+    mdp: Eval,
+    #[arg(long)]
+    edp: Eval,
 }
 
 pub fn smac() -> std::io::Result<()> {
@@ -44,6 +57,13 @@ pub fn smac() -> std::io::Result<()> {
         EVAL_PARAMS.eg_piece_value[KNIGHT] = args.en;
         EVAL_PARAMS.eg_piece_value[BISHOP] = args.eb;
         EVAL_PARAMS.eg_piece_value[QUEEN] = args.eq;
+
+        EVAL_PARAMS.mg_doubled_penalty = args.mdp;
+        EVAL_PARAMS.eg_doubled_penalty = args.edp;
+        EVAL_PARAMS.mg_isolated_penalty = args.mip;
+        EVAL_PARAMS.eg_isolated_penalty = args.eip;
+        EVAL_PARAMS.mg_supported_bonus = args.msb;
+        EVAL_PARAMS.eg_supported_bonus = args.esb;
         
     }
     let fen_and_values = read_texel_sample_file();
