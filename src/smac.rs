@@ -1,9 +1,11 @@
-use std::{fs, io::Write};
+use std::{fs, io::Write, env};
 pub fn smac() -> std::io::Result<()> {
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
+    let args: Vec<String> = env::args().collect();
     let mut log_file = fs::File::create("test.log")?;
-    log_file.write_all(input.as_bytes())?;
-    println!("cost={input}");
+    for arg in args.iter() {
+        log_file.write_all(arg.as_bytes())?;
+        log_file.write_all(b"\n")?;
+    }
+    println!("cost={}", args[0]);
     Ok(())
 }
