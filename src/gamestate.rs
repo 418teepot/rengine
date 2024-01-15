@@ -594,8 +594,9 @@ impl GameState {
         self.piece_boards[side][piece].add_piece(square);
         self.zobrist.add_piece(square, piece, side);
         unsafe {
-            self.psqt_mg[side] += EVAL_PARAMS.psqt_mg[side][piece][square];
-            self.psqt_eg[side] += EVAL_PARAMS.psqt_eg[side][piece][square];
+            let psqt_square = normalize_psqt_square(square, side);
+            self.psqt_mg[side] += EVAL_PARAMS.psqt_mg[piece][psqt_square];
+            self.psqt_eg[side] += EVAL_PARAMS.psqt_eg[piece][psqt_square];
             self.material[side] += EVAL_PARAMS.mg_piece_value[piece];
             self.material_eg[side] += EVAL_PARAMS.eg_piece_value[piece];
         }
@@ -607,8 +608,9 @@ impl GameState {
         self.piece_boards[side][piece].remove_piece(square);
         self.zobrist.remove_piece(square, piece, side);
         unsafe {
-            self.psqt_mg[side] -= EVAL_PARAMS.psqt_mg[side][piece][square];
-            self.psqt_eg[side] -= EVAL_PARAMS.psqt_eg[side][piece][square];
+            let psqt_square = normalize_psqt_square(square, side);
+            self.psqt_mg[side] -= EVAL_PARAMS.psqt_mg[piece][psqt_square];
+            self.psqt_eg[side] -= EVAL_PARAMS.psqt_eg[piece][psqt_square];
             self.material[side] -= EVAL_PARAMS.mg_piece_value[piece];
             self.material_eg[side] -= EVAL_PARAMS.eg_piece_value[piece];
         }
@@ -696,6 +698,15 @@ impl GameState {
 #[inline(always)]
 fn rank_file_to_square(file: Square, rank: Square) -> Square {
     rank * 8 + file
+}
+
+#[inline(always)]
+fn normalize_psqt_square(square: Square, side: Side) -> Square {
+    if side == WHITE {
+        square
+    } else {
+        square ^ 57
+    }
 }
 
 fn piece_to_char(side: Side, piece: Piece) -> char {
